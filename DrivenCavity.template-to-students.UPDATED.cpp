@@ -23,7 +23,7 @@ using namespace std;
 /***** The variables declared "const" CAN *****/
 /*** not be changed by the program once set ***/
 /**********************************************/
-cout << "Testing testing" << endl;
+cout << "Testing" << endl;
 /*--------- Numerical Constants --------*/
   const double zero   = 0.0;
   const double tenth  = 0.1;
