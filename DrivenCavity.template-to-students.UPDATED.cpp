@@ -1,7 +1,7 @@
 /************************************************************************ */
 /*      This code solves for the viscous flow in a lid-driven cavity      */
 /**************************************************************************/
-
+// This is just for demonstration
 #include <iostream> 
 #include <cstdio>
 #include <cmath>
