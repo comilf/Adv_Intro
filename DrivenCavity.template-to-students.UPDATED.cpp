@@ -839,7 +839,6 @@ void compute_time_step( Array3& u, Array2& dt, double& dtmin )
     */
     int i;                      //i index (x direction)
     int j;                      //j index (y direction)
-    int k = .9;                 //k holds the small constant needed for beta^2
     vector<double> V_mag;       //holds max velocity magnitude for beta^2
     double dtvisc;          //Viscous time step stability criteria (constant over domain)
     double uvel2;           //Local velocity squared
@@ -852,33 +851,63 @@ void compute_time_step( Array3& u, Array2& dt, double& dtmin )
 /* !************************************************************** */
 /* !************ADD CODING HERE FOR INTRO CFD STUDENTS************ */
 /* !************************************************************** */
-    for(i = 1; i<((xmax - xmin)/dx); i++)
+    for(i = 1; i<imax; i++)
     {
-        for(j = 1; j<((ymax - ymin)/dy); j++)
+        for(j = 1; j<jmax; j++)
         {
             V_mag.push_back(pow2(u(i,j,1))+pow2(u(i,j,2)));
         }
     }
     double max_V_mag = *max_element(V_mag.begin(), V_mag.end());
-    if(k*uinf < max_V_mag)
+    if(rkappa*vel2ref < max_V_mag)
     {
         beta2 = max_V_mag;
     }
     else 
     {
-        beta2 = k*uinf;
+        beta2 = rkappa*vel2ref;
     }
 
-    for(i = 1; i<((xmax - xmin)/dx); i++)
+    for(i = 0; i<imax; i++)
     {
-        for(j = 1; j<((ymax - ymin)/dy); j++)
+        for(j = 0; j<jmax; j++)
         {
             lambda_x = .5*(abs(u(i,j,1)) + sqrt(pow2(u(i,j,1)) + (4*pow2(beta2))));
             lambda_y = .5*(abs(u(i,j,2)) + sqrt(pow2(u(i,j,2)) + (4*pow2(beta2))));
             //working on computing the lambda maxes to update array2 and get the local time steps
+            if(lambda_x > lambda_y)
+            {
+                lambda_max = lambda_x;
+            }
+            else
+            {
+                lambda_max = lambda_y;
+            }
+            dt(i,j) = dx/lambda_max; //since mesh is uniform doesn't matter if we use dx or dy
         }
     }
-
+    dtvisc = pow2(dx)/(4*rmu*rhoinv); 
+    dtconv = dtmin;
+    for(i = 0; i<imax; i++)
+    {
+        for(j = 0; j<jmax; j++)
+        {
+            if(dt(i,j) < dtconv)
+            {
+                dtconv = dt(i,j);
+            }
+            
+        }
+    }
+    if(dtvisc < dtconv)
+    {
+        dtmin = dtvisc;
+    }
+    else
+    {
+        dtmin = dtconv;
+    }
+    dtmin = cfl*dtmin;
 }    
 
 /**************************************************************************/
