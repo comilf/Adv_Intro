@@ -484,17 +484,49 @@ void bndry( Array3& u )
     /* 
     Uses global variable(s): zero, one (not used), two, half, imax, jmax, uinf  
     To modify: u 
+    note that u = [p u v] and use k to index 
     */
     int i;                                          //i index (x direction)
     int j;                                          //j index (y direction)
 
     /* This applies the cavity boundary conditions */
-
+    
 
 /* !************************************************************** */
 /* !************ADD CODING HERE FOR INTRO CFD STUDENTS************ */
 /* !************************************************************** */
 
+   //not 100% about the pressures
+   //bottom wall
+   j = 0;
+   for(int i=0; i<imax; i++)
+    {
+        u(i,j,1) = 0;
+        u(i,j,2) = 0;
+        u(i,0,0) = 2*u(i,1,0) - u(i,2,0); //was a suggestion from slide 9 on semester project slides
+    }
+    //side walls 
+    
+    for(j=1; j<jmax; j++)
+    {
+        i=0;
+        u(i,j,1) = 0;
+        u(i,j,2) = 0;
+        u(i,j,0) = 2*u(i+1,j,0) - u(i+2,j,0);
+        i=imax;
+        u(i,j,1) = 0;
+        u(i,j,2) = 0;
+        u(i,j,0) = 2*u(i-1,j,0) - u(i-2,j,0);
+    }
+
+    //top wall
+    j = jmax;
+    for(i=0; i<imax; i++)
+    {
+        u(i,j,1) = uinf;
+        u(i,j,2) = 0;
+        u(i,jmax,0) = 2*u(i,jmax-1,0) - u(i,jmax-2,0);
+    }
 
 
 }
