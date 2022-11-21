@@ -858,32 +858,138 @@ void compute_time_step( Array3& u, Array2& dt, double& dtmin )
 
 /**************************************************************************/
 
-void Compute_Artificial_Viscosity( Array3& u, Array2& viscx, Array2& viscy )
-{
-    /* 
-    Uses global variable(s): zero (not used), one (not used), two, four, six, half, fourth (not used)
-    Uses global variable(s): imax, jmax, lim (not used), rho, dx, dy, Cx, Cy, Cx2 (not used), Cy2 (not used)
-    , fsmall (not used), vel2ref, rkappa
-    Uses: u
-    To Modify: artviscx, artviscy
-    */
-    int i;                  //i index (x direction)
-    int j;                  //j index (y direction)
+/***********************************************************************************
+    Added method for common use in the calculation process for other outer method
+***********************************************************************************/
+    
+    #include<vector>
+    #include<algorithm>
 
-    double uvel2;       //Local velocity squared
-    double beta2;       //Beta squared parameter for time derivative preconditioning
-    double lambda_x;    //Max absolute value e-value in (x,t)
-    double lambda_y;    //Max absolute value e-value in (y,t)
-    double d4pdx4;      //4th derivative of pressure w.r.t. x
-    double d4pdy4;      //4th derivative of pressure w.r.t. y
+    // Function used to find beta_2
 
-/* !************************************************************** */
-/* !************ADD CODING HERE FOR INTRO CFD STUDENTS************ */
-/* !************************************************************** */
+    double Find_beta_2(Array3& u, double uvel2, double beta_2){
+    //double vel_sq_ele; // The term used to transverse all the velocity squared value 
+        vector<double> vel2_set; //vector containing all the local squared velocity
+        for(int i=1; i<imax; i++)
+            for(int j=1; j<jmax; j++){
+                uvel2=pow2(u(i,j,1))+pow2(u(i,j,2));
+                vel2_set.push_back(uvel2);
+            }
+        uvel2=*max_element(vel2_set.begin(),vel2_set.end());
+        if(uvel2>(rkappa*pow2(uinf)))
+        beta_2=uvel2;
+        else
+        beta_2=rkappa*pow2(uinf);
+        return beta_2;
+    }
+    
+    // Function used to find the maximum eigenvalue in (x,t)
+    
+    double Find_lambda_x(Array3& u, double lambda_x){
+        double lambda_x_ele; // the term used to transverse all the eigenvalues in (x,t)
+     /* Find the maximum e_value in (x,t) 
+        */
+        for (int i=1; i<imax; i++)
+            for(int j=1; j<jmax; j++){
+                lambda_x_ele=0.5*(u(i,j,1)+sqrt(pow2(u(i,j,1)+4*beta2)));
+                if(lambda_x<lambda_x_ele)
+                lambda_x=lambda_x_ele;
+            }
+        return lambda_x;
+    }
+    
+    // Function used to find the maximum eigenvalue in (y,t)
+    
+    double Find_lambda_y(Array3& u, double lambda_y){
+        double lambda_y_ele; // the term used to transverse all the eigenvalues in (x,t)
+    /* Find the maximum e_value in (y,t) 
+        */
+        for (int i=1; i<imax; i++)
+            for(int j=1; j<jmax; j++){
+                lambda_y_ele=0.5*(u(i,j,2)+sqrt(pow2(u(i,j,2)+4*pow2(beta2))));
+                if(lambda_y<lambda_y_ele)
+                lambda_y=lambda_y_ele;
+            }
+        return lambda_y;
+    }
 
+    // Function used to define viscx and calculate the fourth derivative of pressure with respect to x
+    
+    void Define_viscx(Array3& u, double d4pdx4, Array2& viscx){
+        Array2 d4pdx4_set(imax,jmax); // only store or modify the interior nodes for d4pdx4 term
+        
+        // For the interior nodes which have actual neighbouring nodes
+        for(int j=1; j<jmax; j++)
+            for(int i=2; i<imax-1; i++){
+                d4pdx4=(u(i+2,j,0)-4*u(i+1,j,0)+6*u(i,j,0)-4*u(i-1,j,0)+u(i-2,j,0))/pow4(dx);
+                d4pdx4_set(i,j)=d4pdx4;
+            }
+        
+        // Extrapolate to get the d4pdx4 for nodes which are 1 node away from the left and right boundaries
+        for(int j=1; j<jmax; j++){
+            d4pdx4_set(1,j)=2*d4pdx4_set(2,j)-d4pdx4_set(3,j);
+            d4pdx4_set(imax-1,j)=2*d4pdx4_set(imax-2,j)-d4pdx4_set(imax-3,j);
+        }
+        
+        //viscx also only store interior nodes of (imax-1)*(jmax-1) as d4pdx4
+        for(int i=1; i<imax; i++)
+            for(int j=1; j<jmax; j++)
+                viscx(i,j)=d4pdx4_set(i,j)*(-abs(Find_lambda_x(u,lambda_x))*C4*pow3(dx)/Find_beta_2(u,uvel2,beta_2)); 
+        return;
+    }
 
+    // Function used to define viscy and calculate the fourth derivative of pressure with respect to y
+    
+    void Define_viscy(Array3& u, double d4pdy4, Array2& viscy){
+        Array2 d4pdy4_set(imax,jmax); // only store or modify the interior nodes for d4pdx4 term
+        
+        // For the interior nodes which have actual neighbouring nodes
+        for(int i=1; i<jmax; i++)
+            for(int j=2; j<jmax-1; j++){
+                d4pdy4=(u(i,j+2,0)-4*u(i,j+1,0)+6*u(i,j,0)-4*u(i,j-1,0)+u(i,j-2,0))/pow4(dy);
+                d4pdy4_set(i,j)=d4pdy4;
+            }
+        
+        // Extrapolate to get the d4pdy4 for nodes which are 1 node away from the upper and lower boundaries
+        for(int i=1; i<imax; i++){
+            d4pdy4_set(i,1)=2*d4pdy4_set(i,2)-d4pdy4_set(i,3);
+            d4pdy4_set(i,jmax-1)=2*d4pdy4_set(i,jmax-2)-d4pdy4_set(i,jmax-3);
+        }
+        
+        //viscy also only store interior nodes of (imax-1)*(jmax-1) as d4pdy4
+        for(int i=1; i<imax; i++)
+            for(int j=1; j<jmax; j++)
+                viscy(i,j)=d4pdy4_set(i,j)*(-abs(Find_lambda_y(u,lambda_y))*C4*pow3(dy)/Find_beta_2(u,uvel2,beta_2)); 
+        return;
+    }
 
-}
+    void Compute_Artificial_Viscosity(Array3 & u, Array2 & viscx, Array2 & viscy)
+    {
+        /*
+        Uses global variable(s): zero (not used), one (not used), two, four, six, half, fourth (not used)
+        Uses global variable(s): imax, jmax, lim (not used), rho, dx, dy, Cx, Cy, Cx2 (not used), Cy2 (not used)
+        , fsmall (not used), vel2ref, rkappa
+        Uses: u
+        To Modify: artviscx, artviscy
+        */
+        int i; // i index (x direction)
+        int j; // j index (y direction)
+
+        double uvel2;    // Local velocity squared
+        double beta2;    // Beta squared parameter for time derivative preconditioning
+        double lambda_x; // Max absolute value e-value in (x,t)
+        double lambda_y; // Max absolute value e-value in (y,t)
+        double d4pdx4;   // 4th derivative of pressure w.r.t. x
+        double d4pdy4;   // 4th derivative of pressure w.r.t. y
+
+        /* !************************************************************** */
+        /* !************ADD CODING HERE FOR INTRO CFD STUDENTS************ */
+        /* !************************************************************** */
+        
+        Define_viscx(u,d4pdx4,viscx);
+        Define_viscy(u,d4pdy4,viscy);
+        return;
+    }
 
 /**************************************************************************/
 
