@@ -986,6 +986,7 @@ void compute_time_step( Array3& u, Array2& dt, double& dtmin )
         /* !************ADD CODING HERE FOR INTRO CFD STUDENTS************ */
         /* !************************************************************** */
         
+        double C4=1/16; //define C4
         Define_viscx(u,d4pdx4,viscx);
         Define_viscy(u,d4pdy4,viscy);
         return;
