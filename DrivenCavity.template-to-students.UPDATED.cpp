@@ -908,6 +908,16 @@ void compute_time_step( Array3& u, Array2& dt, double& dtmin )
         dtmin = dtconv;
     }
     dtmin = cfl*dtmin;
+    //in order to stay consistant with the template and use global time stepping 
+    //adding this line to update dt array to hold only dtmin values
+
+    for(i=0; i<imax; i++)
+    {
+        for(j=0; j<jmax; j++)
+        {
+            dt(i,j) = dtmin;
+        }
+    }
 }    
 
 /**************************************************************************/
