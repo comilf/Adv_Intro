@@ -830,6 +830,21 @@ double compute_lambday_max(Array3 u, double beta2, int i, int j)
     return .5*(abs(u(i,j,2)) + sqrt(pow2(u(i,j,2)) + (4*pow2(beta2))));
 }
 
+double compute_lambda_max(Array3 u, double beta2, int i, int j)
+{
+    double lambda_x = compute_lambdax_max(u, beta2, i,j);
+    double lambda_y = compute_lambday_max(u, beta2, i,j);
+    if(lambda_x > lambda_y)
+    {
+        return lambda_x;
+    }
+    else
+    {
+        return lambda_y;
+    }
+    
+}
+
 void compute_time_step(Array3 &u, Array2 &dt, double &dtmin)
 {
     /*
