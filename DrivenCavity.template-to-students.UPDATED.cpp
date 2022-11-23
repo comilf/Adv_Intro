@@ -829,6 +829,45 @@ double srcmms_ymtm(double x, double y)
 
 /**************************************************************************/
 
+//beta^2 IS A LOCAL VARIABLE!!!!!!!!!!!
+double Find_Beta_2(Array3 &u, int i, int j)
+{
+    
+    double velocity_mag = pow2(u(i,j,1)) + pow2(u(i,j,2));
+    if(velocity_mag > rkappa*vel2ref)
+    {
+        return velocity_mag;
+    }
+    else
+    {
+        return rkappa*vel2ref;
+    }
+}
+double compute_lambdax_max(Array3 u, double beta2, int i, int j)
+{
+    return .5*(abs(u(i,j,1)) + sqrt(pow2(u(i,j,1)) + (4*pow2(beta2))));
+}
+double compute_lambday_max(Array3 u, double beta2, int i, int j)
+{
+    return .5*(abs(u(i,j,2)) + sqrt(pow2(u(i,j,2)) + (4*pow2(beta2))));
+}
+
+//note that this compares both lambda_x and lambda_y to get local max lambda
+double compute_lambda_max(Array3 u, double beta2, int i, int j)
+{
+    double lambda_x = compute_lambdax_max(u, beta2, i,j);
+    double lambda_y = compute_lambday_max(u, beta2, i,j);
+    if(lambda_x > lambda_y)
+    {
+        return lambda_x;
+    }
+    else
+    {
+        return lambda_y;
+    }
+    
+}
+
 void compute_time_step( Array3& u, Array2& dt, double& dtmin )
 {
     /* 
