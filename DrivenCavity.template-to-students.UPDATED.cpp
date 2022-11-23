@@ -851,39 +851,15 @@ void compute_time_step( Array3& u, Array2& dt, double& dtmin )
 /* !************************************************************** */
 /* !************ADD CODING HERE FOR INTRO CFD STUDENTS************ */
 /* !************************************************************** */
-    for(i = 1; i<imax; i++)
-    {
-        for(j = 1; j<jmax; j++)
-        {
-            V_mag.push_back(pow2(u(i,j,1))+pow2(u(i,j,2)));
-        }
-    }
-    double max_V_mag = *max_element(V_mag.begin(), V_mag.end());
-    if(rkappa*vel2ref < max_V_mag)
-    {
-        beta2 = max_V_mag;
-    }
-    else 
-    {
-        beta2 = rkappa*vel2ref;
-    }
+   
 
     for(i = 0; i<imax; i++)
     {
         for(j = 0; j<jmax; j++)
         {
-            lambda_x = .5*(abs(u(i,j,1)) + sqrt(pow2(u(i,j,1)) + (4*pow2(beta2))));
-            lambda_y = .5*(abs(u(i,j,2)) + sqrt(pow2(u(i,j,2)) + (4*pow2(beta2))));
-            //working on computing the lambda maxes to update array2 and get the local time steps
-            if(lambda_x > lambda_y)
-            {
-                lambda_max = lambda_x;
-            }
-            else
-            {
-                lambda_max = lambda_y;
-            }
-            dt(i,j) = dx/lambda_max; //since mesh is uniform doesn't matter if we use dx or dy
+           beta2 = Find_Beta_2(u,i,j);
+           lambda_max = compute_lambda_max(u,beta2,i,j);
+           dt(i,j) = dx/lambda_max; //since mesh is uniform doesn't matter if we use dx or dy
         }
     }
     dtvisc = pow2(dx)/(4*rmu*rhoinv); 
@@ -908,6 +884,7 @@ void compute_time_step( Array3& u, Array2& dt, double& dtmin )
         dtmin = dtconv;
     }
     dtmin = cfl*dtmin;
+
     //in order to stay consistant with the template and use global time stepping 
     //adding this line to update dt array to hold only dtmin values
 
