@@ -805,6 +805,30 @@ double srcmms_ymtm(double x, double y)
 }
 
 /**************************************************************************/
+//beta^2 IS A LOCAL VARIABLE!!!!!!!!!!!
+double Find_Beta_2(Array3 &u, int i, int j)
+{
+    
+    double velocity_mag = pow2(u(i,j,1)) + pow2(u(i,j,2));
+    if(velocity_mag > rkappa*vel2ref)
+    {
+        return velocity_mag;
+    }
+    else
+    {
+        return rkappa*vel2ref;
+    }
+}
+
+double compute_lambdax_max(Array3 u, double beta2, int i, int j)
+{
+    return .5*(abs(u(i,j,1)) + sqrt(pow2(u(i,j,1)) + (4*pow2(beta2))));
+}
+
+double compute_lambday_max(Array3 u, double beta2, int i, int j)
+{
+    return .5*(abs(u(i,j,2)) + sqrt(pow2(u(i,j,2)) + (4*pow2(beta2))));
+}
 
 void compute_time_step(Array3 &u, Array2 &dt, double &dtmin)
 {
@@ -838,60 +862,6 @@ void compute_time_step(Array3 &u, Array2 &dt, double &dtmin)
 
 #include <vector>
 #include <algorithm>
-
-// Function used to find beta_2
-
-void Find_beta_2(Array3& u, double uvel2, double& beta2)
-{
-    // double vel_sq_ele; // The term used to transverse all the velocity squared value
-    vector<double> vel2_set; // vector containing all the local squared velocity
-    for (int i = 1; i < imax; i++)
-        for (int j = 1; j < jmax; j++)
-        {
-            uvel2 = pow2(u(i, j, 1)) + pow2(u(i, j, 2));
-            vel2_set.push_back(uvel2);
-        }
-    double uvel2_max = *max_element(vel2_set.begin(), vel2_set.end());
-    if (uvel2_max > (rkappa * pow2(uinf)))
-        beta2 = uvel2_max;
-    else
-        beta2 = rkappa * pow2(uinf);
-    return;
-}
-
-// Function used to find the maximum eigenvalue in (x,t)
-
-void Find_lambda_x(Array3& u, double& lambda_x, double beta2)
-{
-    double lambda_x_ele; // the term used to transverse all the eigenvalues in (x,t)
-                         /* Find the maximum e_value in (x,t)
-                          */
-    for (int i = 1; i < imax; i++)
-        for (int j = 1; j < jmax; j++)
-        {
-            lambda_x_ele = 0.5 * (u(i, j, 1) + sqrt(pow2(u(i, j, 1) + 4 * beta2)));
-            if (lambda_x < lambda_x_ele)
-                lambda_x = lambda_x_ele;
-        }
-    return;
-}
-
-// Function used to find the maximum eigenvalue in (y,t)
-
-void Find_lambda_y(Array3& u, double& lambda_y, double beta2)
-{
-    double lambda_y_ele; // the term used to transverse all the eigenvalues in (x,t)
-                         /* Find the maximum e_value in (y,t)
-                          */
-    for (int i = 1; i < imax; i++)
-        for (int j = 1; j < jmax; j++)
-        {
-            lambda_y_ele = 0.5 * (u(i, j, 2) + sqrt(pow2(u(i, j, 2) + 4 * pow2(beta2))));
-            if (lambda_y < lambda_y_ele)
-                lambda_y = lambda_y_ele;
-        }
-    return;
-}
 
 // Function used to define viscx and calculate the fourth derivative of pressure with respect to x
 
