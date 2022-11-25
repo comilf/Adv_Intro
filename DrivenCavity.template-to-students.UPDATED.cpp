@@ -992,10 +992,49 @@ void point_Jacobi( Array3& u, Array3& uold, Array2& viscx, Array2& viscy, Array2
 /* !************************************************************** */
 /* !************ADD CODING HERE FOR INTRO CFD STUDENTS************ */
 /* !************************************************************** */
+   // Lets update the pressure first 
+   // note that we dont worry about the pressure at the wall, that is taken care of 
+   // when the boundary condition method is called again in the pj_iteration method
+    for(int i = 1; i < imax-1; i++)
+    {
+        for(int j = 1; j < jmax-1; j++)
+        {
+            dudx = (uold(i+1,j,1)-uold(i-1,j,1))/(2*dx);
+            dvdy = (uold(i,j+1,2)-uold(i,j-1,2))/(2*dy);
+            u(i,j,0) = uold(i,j,0)-Find_Beta_2(uold,i,j)*dt(i,j)*(rho*dudx+rho*dvdy-(viscx(i,j)+viscy(i,j))-s(i,j,0));
+        }
+    }
 
+    //next let's update the u velocity
+    //again we dont worry about the wall because the boundary conditions takes care of the wall
+    for(int i = 1; i<imax-1; i++)
+    {
+        for(int j = 1; j < jmax-1; j++)
+        {
+            dudx = (uold(i+1,j,1)-uold(i-1,j,1))/(2*dx);
+            dudy = (uold(i,j+1,1)-uold(i,j-1,1))/(2*dy);
+            dpdx = (uold(i+1,j,0)-u(i-1,j,0))/(2*dx);
+            d2udx2 = (uold(i+1,j,1)-2*uold(i,j,1)+uold(i-1,j,1))/pow2(dx);
+            d2udy2 = (uold(i,j+1,1)-2*uold(i,j,1)+uold(i,j-1,1))/(pow2(dy));
+            u(i,j,1) = uold(i,j,1)-(dt(i,j)*rhoinv)*(rho*uold(i,j,1)*dudx+rho*uold(i,j,2)*dudy+dpdx-rmu*d2udx2-rmu*d2udy2-s(i,j,1));
+        }
+    }
 
-
-
+    //finally we update the v velocity
+    for(int i = 1; i < imax-1; i++)
+    {
+        for(int j = 1; j < jmax-1; j++)
+        {
+            dvdx = (uold(i+1,j,2)-uold(i-1,j,2))/(2*dx);
+            dvdy = (uold(i,j+1,2)-uold(i,j-1,2))/(2*dy);
+            dpdy = (uold(i,j+1,0)-uold(i,j-1,0))/(2*dy);
+            d2vdx2 = (uold(i+1,j,2)-2*uold(i,j,2)+uold(i-1,j,2))/pow2(dx);
+            d2vdy2 = (uold(i,j+1,2)-2*uold(i,j,2)+uold(i,j-1,2))/(pow2(dy));
+            u(i,j,2) = uold(i,j,2)-(dt(i,j)*rhoinv)*(rho*uold(i,j,1)*dvdx+rho*uold(i,j,2)*dvdy+dpdy-rmu*d2vdx2-rmu*d2vdy2-s(i,j,2));
+        }
+    }
+    //Note that we need to call the pressure rescaling function at the end of each iteration
+    pressure_rescaling(u);
 }
 
 /**************************************************************************/
