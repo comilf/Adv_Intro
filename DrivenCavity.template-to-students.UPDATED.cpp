@@ -920,7 +920,7 @@ void Define_viscx(Array3& u, double d4pdx4, Array2& viscx, double beta2, double 
 
 // Function used to define viscy and calculate the fourth derivative of pressure with respect to y
 
-void Define_viscy(Array3 &u, double d4pdy4, Array2 &viscy, double beta2, double lambda_y, double C4)
+void Define_viscy(Array3& u, double d4pdy4, Array2& viscy, double beta2, double lambda_y, double C4)
 {
     Array2 d4pdy4_set(imax, jmax); // only store or modify the interior nodes for d4pdx4 term
 
