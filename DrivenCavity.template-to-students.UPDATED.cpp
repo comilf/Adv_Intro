@@ -829,6 +829,123 @@ double srcmms_ymtm(double x, double y)
 
 /**************************************************************************/
 
+/***********************************************************************************
+    Added method for common use in the calculation process for other outer method
+***********************************************************************************/
+
+#include <vector>
+#include <algorithm>
+
+// Function used to find beta_2
+
+void Find_beta_2(Array3& u, double uvel2, double& beta2)
+{
+    // double vel_sq_ele; // The term used to transverse all the velocity squared value
+    vector<double> vel2_set; // vector containing all the local squared velocity
+    for (int i = 1; i < imax; i++)
+        for (int j = 1; j < jmax; j++)
+        {
+            uvel2 = pow2(u(i, j, 1)) + pow2(u(i, j, 2));
+            vel2_set.push_back(uvel2);
+        }
+    double uvel2_max = *max_element(vel2_set.begin(), vel2_set.end());
+    if (uvel2_max > (rkappa * pow2(uinf)))
+        beta2 = uvel2_max;
+    else
+        beta2 = rkappa * pow2(uinf);
+    return;
+}
+
+// Function used to find the maximum eigenvalue in (x,t)
+
+void Find_lambda_x(Array3& u, double& lambda_x, double beta2)
+{
+    double lambda_x_ele; // the term used to transverse all the eigenvalues in (x,t)
+                         /* Find the maximum e_value in (x,t)
+                          */
+    for (int i = 1; i < imax; i++)
+        for (int j = 1; j < jmax; j++)
+        {
+            lambda_x_ele = 0.5 * (u(i, j, 1) + sqrt(pow2(u(i, j, 1) + 4 * beta2)));
+            if (lambda_x < lambda_x_ele)
+                lambda_x = lambda_x_ele;
+        }
+    return;
+}
+
+// Function used to find the maximum eigenvalue in (y,t)
+
+void Find_lambda_y(Array3& u, double& lambda_y, double beta2)
+{
+    double lambda_y_ele; // the term used to transverse all the eigenvalues in (x,t)
+                         /* Find the maximum e_value in (y,t)
+                          */
+    for (int i = 1; i < imax; i++)
+        for (int j = 1; j < jmax; j++)
+        {
+            lambda_y_ele = 0.5 * (u(i, j, 2) + sqrt(pow2(u(i, j, 2) + 4 * pow2(beta2))));
+            if (lambda_y < lambda_y_ele)
+                lambda_y = lambda_y_ele;
+        }
+    return;
+}
+
+// Function used to define viscx and calculate the fourth derivative of pressure with respect to x
+
+void Define_viscx(Array3& u, double d4pdx4, Array2& viscx, double beta2, double lambda_x, double C4)
+{
+    Array2 d4pdx4_set(imax, jmax); // only store or modify the interior nodes for d4pdx4 term
+
+    // For the interior nodes which have actual neighbouring nodes
+    for (int j = 1; j < jmax-1; j++)
+        for (int i = 2; i < imax - 2; i++)
+        {
+            d4pdx4 = (u(i + 2, j, 0) - 4 * u(i + 1, j, 0) + 6 * u(i, j, 0) - 4 * u(i - 1, j, 0) + u(i - 2, j, 0)) / pow4(dx);
+            d4pdx4_set(i, j) = d4pdx4;
+        }
+
+    // Extrapolate to get the d4pdx4 for nodes which are 1 node away from the left and right boundaries
+    for (int j = 1; j < jmax-1; j++)
+    {
+        d4pdx4_set(1, j) = 2 * d4pdx4_set(2, j) - d4pdx4_set(3, j);
+        d4pdx4_set(imax - 2, j) = 2 * d4pdx4_set(imax - 3, j) - d4pdx4_set(imax - 4, j);
+    }
+
+    // viscx also only store interior nodes of (imax-2)*(jmax-2) as d4pdx4
+    for (int i = 1; i < imax-1; i++)
+        for (int j = 1; j < jmax-1; j++)
+            viscx(i, j) = d4pdx4_set(i, j) * (-abs(lambda_x * C4 * pow3(dx) / beta2));
+    return;
+}
+
+// Function used to define viscy and calculate the fourth derivative of pressure with respect to y
+
+void Define_viscy(Array3 &u, double d4pdy4, Array2 &viscy, double beta2, double lambda_y, double C4)
+{
+    Array2 d4pdy4_set(imax, jmax); // only store or modify the interior nodes for d4pdx4 term
+
+    // For the interior nodes which have actual neighbouring nodes
+    for (int i = 1; i < imax - 1; i++)
+        for (int j = 2; j < jmax - 2; j++)
+        {
+            d4pdy4 = (u(i, j + 2, 0) - 4 * u(i, j + 1, 0) + 6 * u(i, j, 0) - 4 * u(i, j - 1, 0) + u(i, j - 2, 0)) / pow4(dy);
+            d4pdy4_set(i, j) = d4pdy4;
+        }
+
+    // Extrapolate to get the d4pdy4 for nodes which are 1 node away from the upper and lower boundaries
+    for (int i = 1; i < imax - 1; i++)
+    {
+        d4pdy4_set(i, 1) = 2 * d4pdy4_set(i, 2) - d4pdy4_set(i, 3);
+        d4pdy4_set(i, jmax - 2) = 2 * d4pdy4_set(i, jmax - 3) - d4pdy4_set(i, jmax - 4);
+    }
+
+    // viscy also only store interior nodes of (imax-2)*(jmax-2) as d4pdy4
+    for (int i = 1; i < imax-1; i++)
+        for (int j = 1; j < jmax-1; j++)
+            viscy(i, j) = d4pdy4_set(i, j) * (-abs(lambda_y * C4 * pow3(dy) / beta2));
+    return;
+}
+
 void compute_time_step( Array3& u, Array2& dt, double& dtmin )
 {
     /* 
@@ -870,19 +987,24 @@ void Compute_Artificial_Viscosity( Array3& u, Array2& viscx, Array2& viscy )
     int i;                  //i index (x direction)
     int j;                  //j index (y direction)
 
-    double uvel2;       //Local velocity squared
-    double beta2;       //Beta squared parameter for time derivative preconditioning
-    double lambda_x;    //Max absolute value e-value in (x,t)
-    double lambda_y;    //Max absolute value e-value in (y,t)
-    double d4pdx4;      //4th derivative of pressure w.r.t. x
-    double d4pdy4;      //4th derivative of pressure w.r.t. y
+    double uvel2 = 0.0;       //Local velocity squared
+    double beta2 = 0.0;       //Beta squared parameter for time derivative preconditioning
+    double lambda_x = 0.0;    //Max absolute value e-value in (x,t)
+    double lambda_y = 0.0;    //Max absolute value e-value in (y,t)
+    double d4pdx4 = 0.0;      //4th derivative of pressure w.r.t. x
+    double d4pdy4 = 0.0;      //4th derivative of pressure w.r.t. y
 
 /* !************************************************************** */
 /* !************ADD CODING HERE FOR INTRO CFD STUDENTS************ */
 /* !************************************************************** */
 
-
-
+    double C4 = 1 / 16; // define C4
+    Find_beta_2(u,uvel2,beta2);
+    Find_lambda_x(u,lambda_x,beta2);
+    Find_lambda_y(u,lambda_y,beta2);
+    Define_viscx(u, d4pdx4, viscx, lambda_x, beta2, C4);
+    Define_viscy(u, d4pdy4, viscy, lambda_y, beta2, C4);
+    return;
 }
 
 /**************************************************************************/
@@ -917,9 +1039,22 @@ void SGS_forward_sweep( Array3& u, Array2& viscx, Array2& viscy, Array2& dt, Arr
 /* !************ADD CODING HERE FOR INTRO CFD STUDENTS************ */
 /* !************************************************************** */
 
+    for (int i = 1; i < imax - 1; i++)
+        {
+            for (int j = 1; j < jmax - 1; j++)
+            {
+                //get half time step forward for pressure
+                u(i,j,0)=u(i,j,0)-beta2*dt(i,j)*((rho*(u(i+1,j,1)-u(i-1,j,1))/(2*dx))+(rho*(u(i,j+1,2)-u(i,j-1,2))/(2*dy))-(viscx(i,j)+viscy(i,j))-s(i,j,0)); 
+                
+                //get half time step forward for u_vel
+                u(i,j,1)=u(i,j,1)-dt(i,j)/rho*((rho*u(i,j,1)*(u(i+1,j,1)-u(i-1,j,1))/(2*dx))+(rho*u(i,j,2)*(u(i,j+1,1)-u(i,j-1,1))/(2*dy))+(u(i+1,j,0)-u(i-1,j,0))/(2*dx)-rmu*(u(i+1,j,1)-2*u(i,j,1)+u(i-1,j,1))/pow2(dx)-rmu*(u(i,j+1,1)-2*u(i,j,1)+u(i,j-1,1)/pow2(dy)-s(i,j,1)));
+                
+                //get half time step forward for v_vel
+                u(i,j,2)=u(i,j,2)-dt(i,j)/rho*((rho*u(i,j,1)*(u(i+1,j,2)-u(i-1,j,2))/(2*dx))+(rho*u(i,j,2)*(u(i,j+1,2)-u(i,j-1,2))/(2*dy))+(u(i,j+1,0)-u(i,j-1,0))/(2*dy)-rmu*(u(i+1,j,2)-2*u(i,j,2)+u(i-1,j,2))/pow2(dx)-rmu*(u(i,j+1,2)-2*u(i,j,2)+u(i,j-1,2)/pow2(dy)-s(i,j,2)));
 
-
-
+            }
+        }
+    return;
 }
 
 /**************************************************************************/
@@ -955,9 +1090,22 @@ void SGS_backward_sweep( Array3& u, Array2& viscx, Array2& viscy, Array2& dt, Ar
 /* !************ADD CODING HERE FOR INTRO CFD STUDENTS************ */
 /* !************************************************************** */
 
+    for (int i = imax-2; i > 0; i--)
+        {
+            for (int j = jmax-2; j > 0; j--)
+            {
+                //get half time step forward for pressure
+                u(i,j,0)=u(i,j,0)-beta2*dt(i,j)*((rho*(u(i+1,j,1)-u(i-1,j,1))/(2*dx))+(rho*(u(i,j+1,2)-u(i,j-1,2))/(2*dy))-(viscx(i,j)+viscy(i,j))-s(i,j,0)); 
+                
+                //get half time step forward for u_vel
+                u(i,j,1)=u(i,j,1)-dt(i,j)/rho*((rho*u(i,j,1)*(u(i+1,j,1)-u(i-1,j,1))/(2*dx))+(rho*u(i,j,2)*(u(i,j+1,1)-u(i,j-1,1))/(2*dy))+(u(i+1,j,0)-u(i-1,j,0))/(2*dx)-rmu*(u(i+1,j,1)-2*u(i,j,1)+u(i-1,j,1))/pow2(dx)-rmu*(u(i,j+1,1)-2*u(i,j,1)+u(i,j-1,1)/pow2(dy)-s(i,j,1)));
+                
+                //get half time step forward for v_vel
+                u(i,j,2)=u(i,j,2)-dt(i,j)/rho*((rho*u(i,j,1)*(u(i+1,j,2)-u(i-1,j,2))/(2*dx))+(rho*u(i,j,2)*(u(i,j+1,2)-u(i,j-1,2))/(2*dy))+(u(i,j+1,0)-u(i,j-1,0))/(2*dy)-rmu*(u(i+1,j,2)-2*u(i,j,2)+u(i-1,j,2))/pow2(dx)-rmu*(u(i,j+1,2)-2*u(i,j,2)+u(i,j-1,2)/pow2(dy)-s(i,j,2)));
 
-
-
+            }
+        }
+    return;
 }
 
 /**************************************************************************/
