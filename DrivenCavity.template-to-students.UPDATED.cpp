@@ -833,24 +833,14 @@ double srcmms_ymtm(double x, double y)
     Added method for common use in the calculation process for other outer method
 ***********************************************************************************/
 
-#include <vector>
-#include <algorithm>
-
 // Function used to find beta_2
 
-void Find_beta_2(Array3& u, double uvel2, double& beta2)
+void Find_beta2_local(Array3& u, double& beta2, int i, int j)
 {
-    // double vel_sq_ele; // The term used to transverse all the velocity squared value
-    vector<double> vel2_set; // vector containing all the local squared velocity
-    for (int i = 1; i < imax; i++)
-        for (int j = 1; j < jmax; j++)
-        {
-            uvel2 = pow2(u(i, j, 1)) + pow2(u(i, j, 2));
-            vel2_set.push_back(uvel2);
-        }
-    double uvel2_max = *max_element(vel2_set.begin(), vel2_set.end());
-    if (uvel2_max > (rkappa * pow2(uinf)))
-        beta2 = uvel2_max;
+    double uvel2_local;
+    uvel2_local = pow2(u(i, j, 1)) + pow2(u(i, j, 2));
+    if (uvel2_local > (rkappa * pow2(uinf)))
+        beta2 = uvel2_local;
     else
         beta2 = rkappa * pow2(uinf);
     return;
@@ -858,41 +848,23 @@ void Find_beta_2(Array3& u, double uvel2, double& beta2)
 
 // Function used to find the maximum eigenvalue in (x,t)
 
-void Find_lambda_x(Array3& u, double& lambda_x, double beta2)
+void Find_lambda_x_local(Array3& u, double& lambda_x, double beta2, int i, int j)
 {
-    double lambda_x_ele; // the term used to transverse all the eigenvalues in (x,t)
-                         /* Find the maximum e_value in (x,t)
-                          */
-    for (int i = 1; i < imax; i++)
-        for (int j = 1; j < jmax; j++)
-        {
-            lambda_x_ele = 0.5 * (u(i, j, 1) + sqrt(pow2(u(i, j, 1) + 4 * beta2)));
-            if (lambda_x < lambda_x_ele)
-                lambda_x = lambda_x_ele;
-        }
+    lambda_x = 0.5 * (u(i, j, 1) + sqrt(pow2(u(i, j, 1) + 4 * beta2)));
     return;
 }
 
 // Function used to find the maximum eigenvalue in (y,t)
 
-void Find_lambda_y(Array3& u, double& lambda_y, double beta2)
+void Find_lambda_y_local(Array3& u, double& lambda_y, double beta2, int i, int j)
 {
-    double lambda_y_ele; // the term used to transverse all the eigenvalues in (x,t)
-                         /* Find the maximum e_value in (y,t)
-                          */
-    for (int i = 1; i < imax; i++)
-        for (int j = 1; j < jmax; j++)
-        {
-            lambda_y_ele = 0.5 * (u(i, j, 2) + sqrt(pow2(u(i, j, 2) + 4 * pow2(beta2))));
-            if (lambda_y < lambda_y_ele)
-                lambda_y = lambda_y_ele;
-        }
+    lambda_y = 0.5 * (u(i, j, 2) + sqrt(pow2(u(i, j, 2) + 4 * beta2)));
     return;
 }
 
 // Function used to define viscx and calculate the fourth derivative of pressure with respect to x
 
-void Define_viscx(Array3& u, double d4pdx4, Array2& viscx, double beta2, double lambda_x, double C4)
+void Define_viscx_local(Array3& u, double d4pdx4, Array2& viscx, double& beta2, double& lambda_x, double C4)
 {
     Array2 d4pdx4_set(imax, jmax); // only store or modify the interior nodes for d4pdx4 term
 
@@ -913,14 +885,20 @@ void Define_viscx(Array3& u, double d4pdx4, Array2& viscx, double beta2, double 
 
     // viscx also only store interior nodes of (imax-2)*(jmax-2) as d4pdx4
     for (int i = 1; i < imax-1; i++)
+        {
         for (int j = 1; j < jmax-1; j++)
-            viscx(i, j) = d4pdx4_set(i, j) * (-abs(lambda_x * C4 * pow3(dx) / beta2));
+            {
+            Find_beta2_local(u, beta2, i, j);
+            Find_lambda_x_local(u, lambda_x, beta2, i, j);
+            viscx(i, j) = d4pdx4_set(i, j) * (-abs(lambda_x) * C4 * pow3(dx) / beta2);
+            }
+        }
     return;
 }
 
 // Function used to define viscy and calculate the fourth derivative of pressure with respect to y
 
-void Define_viscy(Array3& u, double d4pdy4, Array2& viscy, double beta2, double lambda_y, double C4)
+void Define_viscy_local(Array3& u, double d4pdy4, Array2& viscy, double& beta2, double& lambda_y, double C4)
 {
     Array2 d4pdy4_set(imax, jmax); // only store or modify the interior nodes for d4pdx4 term
 
@@ -941,8 +919,14 @@ void Define_viscy(Array3& u, double d4pdy4, Array2& viscy, double beta2, double 
 
     // viscy also only store interior nodes of (imax-2)*(jmax-2) as d4pdy4
     for (int i = 1; i < imax-1; i++)
+        {
         for (int j = 1; j < jmax-1; j++)
-            viscy(i, j) = d4pdy4_set(i, j) * (-abs(lambda_y * C4 * pow3(dy) / beta2));
+            {
+            Find_beta2_local(u, beta2, i, j);
+            Find_lambda_y_local(u, lambda_y, beta2, i, j);
+            viscy(i, j) = d4pdy4_set(i, j) * (-abs(lambda_y) * C4 * pow3(dx) / beta2);
+            }
+        }
     return;
 }
 
@@ -999,11 +983,8 @@ void Compute_Artificial_Viscosity( Array3& u, Array2& viscx, Array2& viscy )
 /* !************************************************************** */
 
     double C4 = 1 / 16; // define C4
-    Find_beta_2(u,uvel2,beta2);
-    Find_lambda_x(u,lambda_x,beta2);
-    Find_lambda_y(u,lambda_y,beta2);
-    Define_viscx(u, d4pdx4, viscx, lambda_x, beta2, C4);
-    Define_viscy(u, d4pdy4, viscy, lambda_y, beta2, C4);
+    Define_viscx_local(u, d4pdx4, viscx, beta2, lambda_x, C4);
+    Define_viscy_local(u, d4pdy4, viscy, beta2, lambda_y, C4);
     return;
 }
 
@@ -1253,10 +1234,88 @@ void Discretization_Error_Norms( Array3& u )
 /* !************************************************************** */
 /* !************ADD CODING HERE FOR INTRO CFD STUDENTS************ */
 /* !************************************************************** */
+    // initialise each L1 norm
 
+        rL1norm[0]=0.0;
+        rL1norm[1]=0.0;
+        rL1norm[2]=0.0;
 
+    // calculate the L1 norms for each u component 
 
+        for(int i = 0; i < imax; i++) // incluing the boundary nodes
+        {
+            for( int j = 0; j < jmax; j++)
+            {
+                x = i*dx;
+                y = j*dy;
+                rL1norm[0]+=abs(u(i,j,0)-umms(x,y,0));
+                rL1norm[1]+=abs(u(i,j,1)-umms(x,y,1));
+                rL1norm[2]+=abs(u(i,j,2)-umms(x,y,2));
+            }
+        }
 
+    // each term gets devided by imax*jmax 
+    
+        rL1norm[0]=rL1norm[0]/(imax*jmax);
+        rL1norm[1]=rL1norm[1]/(imax*jmax);
+        rL1norm[2]=rL1norm[2]/(imax*jmax);  
+    
+    // initialise each L2 norm
+
+        rL2norm[0]=0.0;
+        rL2norm[1]=0.0;
+        rL2norm[2]=0.0;
+
+    // calculate the L2 norms for each u component 
+
+        for(int i = 0; i < imax; i++) // incluing the boundary nodes
+        {
+            for( int j = 0; j < jmax; j++)
+            {
+                x = i*dx;
+                y = j*dy;
+                rL2norm[0]+=pow2(u(i,j,0)-umms(x,y,0));
+                rL2norm[1]+=pow2(u(i,j,1)-umms(x,y,1));
+                rL2norm[2]+=pow2(u(i,j,2)-umms(x,y,2));
+            }
+        } 
+        rL2norm[0]=sqrt(rL2norm[0]/(imax*jmax));
+        rL2norm[1]=sqrt(rL2norm[1]/(imax*jmax));
+        rL2norm[2]=sqrt(rL2norm[2]/(imax*jmax));
+
+    
+    // initialise each Linf norm
+
+        rLinfnorm[0]=0.0;
+        rLinfnorm[1]=0.0;
+        rLinfnorm[2]=0.0;
+    
+        double rLinfnorm_ele[3] = {0.0, 0.0, 0.0};
+
+    // calculate the Linf norms for each u component 
+
+        for(int i = 0; i < imax; i++) // incluing the boundary nodes
+        {
+            for( int j = 0; j < jmax; j++)
+            {
+                x = i*dx;
+                y = j*dy;
+                rLinfnorm_ele[0] = abs(u(i,j,0)-umms(x,y,0));
+                rLinfnorm_ele[1] = abs(u(i,j,1)-umms(x,y,1));
+                rLinfnorm_ele[2] = abs(u(i,j,2)-umms(x,y,2));
+                if(rLinfnorm[0] < rLinfnorm_ele[0])
+                rLinfnorm[0] = rLinfnorm_ele[0];
+                if(rLinfnorm[1] < rLinfnorm_ele[1])
+                rLinfnorm[1] = rLinfnorm_ele[1];
+                if(rLinfnorm[2] < rLinfnorm_ele[2])
+                rLinfnorm[2] = rLinfnorm_ele[2];           
+            }
+        } 
+        
+        //
+        FILE* fp_norm; // flie used to generate norms
+        fp_norm=fopen("./norm.out","w");
+        fprintf(fp_norm,"The L2 norms of mesh Level k: %f %f %f \n", rL2norm[0], rL2norm[1], rL2norm[2]);
     }
 }
 
