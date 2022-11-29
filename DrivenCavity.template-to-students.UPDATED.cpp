@@ -1033,8 +1033,6 @@ void point_Jacobi( Array3& u, Array3& uold, Array2& viscx, Array2& viscy, Array2
             u(i,j,2) = uold(i,j,2)-(dt(i,j)*rhoinv)*(rho*uold(i,j,1)*dvdx+rho*uold(i,j,2)*dvdy+dpdy-rmu*d2vdx2-rmu*d2vdy2-s(i,j,2));
         }
     }
-    //Note that we need to call the pressure rescaling function at the end of each iteration
-    pressure_rescaling(u);
 }
 
 /**************************************************************************/
