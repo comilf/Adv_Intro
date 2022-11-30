@@ -484,17 +484,50 @@ void bndry( Array3& u )
     /* 
     Uses global variable(s): zero, one (not used), two, half, imax, jmax, uinf  
     To modify: u 
+    note that u = [p u v] and use k to index 
     */
     int i;                                          //i index (x direction)
     int j;                                          //j index (y direction)
 
     /* This applies the cavity boundary conditions */
-
+    
 
 /* !************************************************************** */
 /* !************ADD CODING HERE FOR INTRO CFD STUDENTS************ */
 /* !************************************************************** */
 
+   //not 100% about the pressures
+   //bottom wall
+   j = 0;
+   for(int i=0; i<imax; i++)
+    {
+        u(i,j,1) = 0;
+        u(i,j,2) = 0;
+        u(i,0,0) = 2*u(i,1,0) - u(i,2,0); //was a suggestion from slide 9 on semester project slides
+        // maybe use j_bot to indicate like bottom wall
+    }
+    //side walls 
+    
+    for(j=1; j<jmax; j++)
+    {
+        i=0; // perhaps use like i_left to indicate left wall 
+        u(i,j,1) = 0;
+        u(i,j,2) = 0;
+        u(i,j,0) = 2*u(i+1,j,0) - u(i+2,j,0);
+        i=imax; // likewise use i_right for right wall
+        u(i,j,1) = 0;
+        u(i,j,2) = 0;
+        u(i,j,0) = 2*u(i-1,j,0) - u(i-2,j,0);
+    }
+
+    //top wall
+    j = jmax;
+    for(i=0; i<imax; i++)
+    {
+        u(i,j,1) = uinf;
+        u(i,j,2) = 0;
+        u(i,jmax,0) = 2*u(i,jmax-1,0) - u(i,jmax-2,0);
+    }
 
 
 }
@@ -839,7 +872,7 @@ void compute_time_step( Array3& u, Array2& dt, double& dtmin )
     */
     int i;                      //i index (x direction)
     int j;                      //j index (y direction)
-  
+    vector<double> V_mag;       //holds max velocity magnitude for beta^2
     double dtvisc;          //Viscous time step stability criteria (constant over domain)
     double uvel2;           //Local velocity squared
     double beta2;           //Beta squared parameter for time derivative preconditioning
@@ -851,9 +884,50 @@ void compute_time_step( Array3& u, Array2& dt, double& dtmin )
 /* !************************************************************** */
 /* !************ADD CODING HERE FOR INTRO CFD STUDENTS************ */
 /* !************************************************************** */
+   
 
+    for(i = 0; i<imax; i++)
+    {
+        for(j = 0; j<jmax; j++)
+        {
+           beta2 = Find_Beta_2(u,i,j);
+           lambda_max = compute_lambda_max(u,beta2,i,j);
+           dt(i,j) = dx/lambda_max; //since mesh is uniform doesn't matter if we use dx or dy
+        }
+    }
+    dtvisc = pow2(dx)/(4*rmu*rhoinv); 
+    dtconv = dtmin;
+    for(i = 0; i<imax; i++)
+    {
+        for(j = 0; j<jmax; j++)
+        {
+            if(dt(i,j) < dtconv)
+            {
+                dtconv = dt(i,j);
+            }
+            
+        }
+    }
+    if(dtvisc < dtconv)
+    {
+        dtmin = dtvisc;
+    }
+    else
+    {
+        dtmin = dtconv;
+    }
+    dtmin = cfl*dtmin;
 
+    //in order to stay consistant with the template and use global time stepping 
+    //adding this line to update dt array to hold only dtmin values
 
+    for(i=0; i<imax; i++)
+    {
+        for(j=0; j<jmax; j++)
+        {
+            dt(i,j) = dtmin;
+        }
+    }
 }  
 
 /**************************************************************************/
@@ -1097,9 +1171,119 @@ void check_iterative_convergence(int n, Array3& u, Array3& uold, Array2& dt, dou
 /* !************************************************************** */
 /* !************ADD CODING HERE FOR INTRO CFD STUDENTS************ */
 /* !************************************************************** */
+    Array2 viscx (imax, jmax);
+    Array2 viscy (imax, jmax);
+    Array3 source  (imax, jmax, neq);
+    double residual_variable;
+    //need viscosity for the residual calculation
+    Compute_Artificial_Viscosity(u, viscx, viscy);
 
+    //calling this function so that we can have access to the source terms
+    compute_source_terms(source);
+    //computing pressure residual first
+    if(imms == 0)
+    {
+        for(i=0; i<imax; i++)
+        {
+            for(j=0; j<jmax; j++)
+            {
+                double dudx = (u(i+1,j,1)-u(i-1,j,1))/(2*dx);
+                double dvdy = (u(i,j+1,2)-u(i,j-1,2))/(2*dy);
+                //need to hold the residual calculation at the ij node somehow
+                residual_variable = pow2(rho*(dudx+dvdy)-(viscx(i,j)+viscy(i,j)));
+                //the norm involves a summation
+                res[0] = res[0] + residual_variable;
+            }
+        }
+        //note that res[0] holds the summation part of the norm
+        //so why not just use it to finish the norm calculation
+        //note that there are imax*jmax points total here since the norm involves 
+        //dividing by the total number of points
+        res[0] = sqrt(res[0]/(imax*jmax));
+        //note we are looking at the ratio of the current residual with the initial one
+        //and makes sense that the last step stores it in res[0] since res stands for residual
+        res[0] = res[0]/resinit[0];
+    
+        //lets compute the u velocity residual now 
+        for(i=0; i<imax; i++)
+        {
+            for(j=0; j<jmax; j++)
+            {
+                double dudx = (u(i+1,j,1)-u(i-1,j,1))/(2*dx);
+                double dudy = (u(i,j+1,1)-u(i,j-1,1))/(2*dy);
+                double dpdx = (u(i+1,j,0)-u(i-1,j,0))/(2*dx);
+                double d2udx2 = (u(i+1,j,1)-2*u(i,j,1)+u(i-1,j,1))/(pow2(dx));
+                double d2udy2 = (u(i,j+1,1)-2*u(i,j,1)+u(i,j-1,1))/(pow2(dy));
+                residual_variable = pow2(rho*(u(i,j,1)*dudx+u(i,j,2)*dudy)+dpdx-rmu*(d2udx2+d2udy2));
+                res[1] = res[1] + residual_variable;
+            }
+        }
+        res[1] = sqrt(res[1]/(imax*jmax));
+        res[1] = res[1]/resinit[1];
 
-
+        //lets compute the v velocity residual now 
+        for(i=0; i<imax; i++)
+        {
+            for(j=0; j<jmax; j++)
+            {
+                double dvdx = (u(i+1,j,2)-u(i-1,j,2))/(2*dx);
+                double dvdy = (u(i,j+1,2)-u(i,j-1,2))/(2*dy);
+                double dpdy = (u(i,j+1,0)-u(i,j-1,0))/(2*dy);
+                double d2vdx2 = (u(i+1,j,2)-2*u(i,j,2)+u(i-1,j,2))/(pow2(dx));
+                double d2vdy2 = (u(i,j+1,2)-2*u(i,j,2)+u(i,j-1,2))/(pow2(dy));
+                residual_variable = pow2(rho*(u(i,j,1)*dvdx+u(i,j,2)*dvdy)+dpdy-rmu*(d2vdx2+d2vdy2));
+                res[2] = res[2] + residual_variable;
+            }
+        }
+        res[2] = sqrt(res[2]/(imax*jmax));
+        res[2] = res[2]/resinit[2];
+    }
+    //the else branch is for the manufactured solution
+    else
+    {
+        for(i=0; i<imax; i++)
+        {
+            for(j=0; j<jmax; j++)
+            {
+                double dudx = (u(i+1,j,1)-u(i-1,j,1))/(2*dx);
+                double dvdy = (u(i,j+1,2)-u(i,j-1,2))/(2*dy);
+                residual_variable = pow2(rho*(dudx+dvdy)-(viscx(i,j)+viscy(i,j))-source(i,j,0));
+                res[0] = res[0] + residual_variable;
+            }
+        }
+        res[0] = sqrt(res[0]/(imax*jmax));
+        res[0] = res[0]/resinit[0]; 
+        for(i=0; i<imax; i++)
+        {
+            for(j=0; j<jmax; j++)
+            {
+                double dudx = (u(i+1,j,1)-u(i-1,j,1))/(2*dx);
+                double dudy = (u(i,j+1,1)-u(i,j-1,1))/(2*dy);
+                double dpdx = (u(i+1,j,0)-u(i-1,j,0))/(2*dx);
+                double d2udx2 = (u(i+1,j,1)-2*u(i,j,1)+u(i-1,j,1))/(pow2(dx));
+                double d2udy2 = (u(i,j+1,1)-2*u(i,j,1)+u(i,j-1,1))/(pow2(dy));
+                residual_variable = pow2(rho*(u(i,j,1)*dudx+u(i,j,2)*dudy)+dpdx-rmu*(d2udx2+d2udy2)-source(i,j,1));
+                res[1] = res[1] + residual_variable;
+            }
+        }
+        res[1] = sqrt(res[1]/(imax*jmax));
+        res[1] = res[1]/resinit[1];
+        for(i=0; i<imax; i++)
+        {
+            for(j=0; j<jmax; j++)
+            {
+                double dvdx = (u(i+1,j,2)-u(i-1,j,2))/(2*dx);
+                double dvdy = (u(i,j+1,2)-u(i,j-1,2))/(2*dy);
+                double dpdy = (u(i,j+1,0)-u(i,j-1,0))/(2*dy);
+                double d2vdx2 = (u(i+1,j,2)-2*u(i,j,2)+u(i-1,j,2))/(pow2(dx));
+                double d2vdy2 = (u(i,j+1,2)-2*u(i,j,2)+u(i,j-1,2))/(pow2(dy));
+                residual_variable = pow2(rho*(u(i,j,1)*dvdx+u(i,j,2)*dvdy)+dpdy-rmu*(d2vdx2+d2vdy2)-source(i,j,2));
+                res[2] = res[2] + residual_variable;
+            }
+        }
+        res[2] = sqrt(res[2]/(imax*jmax));
+        res[2] = res[2]/resinit[2];
+    }
 
     /* Write iterative residuals every "residualOut" iterations */
     if( ((n%residualOut)==0)||(n==ninit) )
@@ -1113,7 +1297,15 @@ void check_iterative_convergence(int n, Array3& u, Array3& uold, Array2& dt, dou
             printf("Iter. Time (s)   dt (s)      Continuity    x-Momentum    y-Momentum\n"); 
         }    
     }
-     
+    conv = res[0];
+    if(res[1]>=conv)
+    {
+        conv = res[1];
+    } 
+    if(res[2] > conv)
+    {
+        conv = res[2];
+    }
 }
 
 /**************************************************************************/
