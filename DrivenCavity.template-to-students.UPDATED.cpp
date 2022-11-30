@@ -1060,9 +1060,67 @@ void check_iterative_convergence(int n, Array3& u, Array3& uold, Array2& dt, dou
 /* !************************************************************** */
 /* !************ADD CODING HERE FOR INTRO CFD STUDENTS************ */
 /* !************************************************************** */
+    Array2 viscx (imax, jmax);
+    Array2 viscy (imax, jmax);
+    double residual_variable;
+    //need viscosity for the residual calculation
+    Compute_Artificial_Viscosity(u, viscx, viscy);
+    //computing pressure residual first
+    for(i=0; i<imax; i++)
+    {
+        for(j=0; j<jmax; j++)
+        {
+            double dudx = (u(i+1,j,1)-u(i-1,j,1))/(2*dx);
+            double dvdy = (u(i,j+1,2)-u(i,j-1,2))/(2*dy);
+            //need to hold the residual calculation at the ij node somehow
+            residual_variable = pow2(rho*(dudx+dvdy)-(viscx(i,j)+viscy(i,j)));
+            //the norm involves a summation
+            res[0] = res[0] + residual_variable;
+            //marker
+        }
+    }
+    //note that res[0] holds the summation part of the norm
+    //so why not just use it to finish the norm calculation
+    //note that there are imax*jmax points total here since the norm involves 
+    //dividing by the total number of points
+    res[0] = sqrt(res[0]/(imax*jmax));
+    //note we are looking at the ratio of the current residual with the initial one
+    //and makes sense that the last step stores it in res[0] since res stands for residual
+    res[0] = res[0]/resinit[0];
+    
+    //lets compute the u velocity residual now 
+    for(i=0; i<imax; i++)
+    {
+        for(j=0; j<jmax; j++)
+        {
+            double dudx = (u(i+1,j,1)-u(i-1,j,1))/(2*dx);
+            double dudy = (u(i,j+1,1)-u(i,j-1,1))/(2*dy);
+            double dpdx = (u(i+1,j,0)-u(i-1,j,0))/(2*dx);
+            double d2udx2 = (u(i+1,j,1)-2*u(i,j,1)+u(i-1,j,1))/(pow2(dx));
+            double d2udy2 = (u(i,j+1,1)-2*u(i,j,1)+u(i,j-1,1))/(pow2(dy));
+            residual_variable = pow2(rho*(u(i,j,1)*dudx+u(i,j,2)*dudy)+dpdx-rmu*(d2udx2+d2udy2));
+            res[1] = res[1] + residual_variable;
+        }
+    }
+    res[1] = sqrt(res[1]/(imax*jmax));
+    res[1] = res[1]/resinit[1];
 
-
-
+    //lets compute the v velocity residual now 
+    for(i=0; i<imax; i++)
+    {
+        for(j=0; j<jmax; j++)
+        {
+            double dvdx = (u(i+1,j,2)-u(i-1,j,2))/(2*dx);
+            double dvdy = (u(i,j+1,2)-u(i,j-1,2))/(2*dy);
+            double dpdy = (u(i,j+1,0)-u(i,j-1,0))/(2*dy);
+            double d2vdx2 = (u(i+1,j,2)-2*u(i,j,2)+u(i-1,j,2))/(pow2(dx));
+            double d2vdy2 = (u(i,j+1,2)-2*u(i,j,2)+u(i,j-1,2))/(pow2(dy));
+            residual_variable = pow2(rho*(u(i,j,1)*dvdx+u(i,j,2)*dvdy)+dpdy-rmu*(d2vdx2+d2vdy2));
+            res[2] = res[2] + residual_variable;
+        }
+    }
+    res[2] = sqrt(res[2]/(imax*jmax));
+    res[2] = res[2]/resinit[2];
 
     /* Write iterative residuals every "residualOut" iterations */
     if( ((n%residualOut)==0)||(n==ninit) )
@@ -1076,7 +1134,15 @@ void check_iterative_convergence(int n, Array3& u, Array3& uold, Array2& dt, dou
             printf("Iter. Time (s)   dt (s)      Continuity    x-Momentum    y-Momentum\n"); 
         }    
     }
-     
+    conv = res[0];
+    if(res[1]>=conv)
+    {
+        conv = res[1];
+    } 
+    if(res[2] > conv)
+    {
+        conv = res[2];
+    }
 }
 
 /**************************************************************************/
