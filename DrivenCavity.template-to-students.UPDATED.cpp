@@ -1,7 +1,7 @@
 /************************************************************************ */
 /*      This code solves for the viscous flow in a lid-driven cavity      */
 /**************************************************************************/
-// cout << "Hello world" << endl;
+
 #include <iostream> 
 #include <cstdio>
 #include <cmath>
@@ -495,6 +495,38 @@ void bndry( Array3& u )
 /* !************ADD CODING HERE FOR INTRO CFD STUDENTS************ */
 /* !************************************************************** */
 
+//not 100% about the pressures
+   //bottom wall
+   j = 0;
+   for(int i=0; i<imax; i++)
+    {
+        u(i,j,1) = 0;
+        u(i,j,2) = 0;
+        u(i,0,0) = 2*u(i,1,0) - u(i,2,0); //was a suggestion from slide 9 on semester project slides
+    }
+    //side walls 
+    
+    for(j=1; j<jmax; j++)
+    {
+        i=0;
+        u(i,j,1) = 0;
+        u(i,j,2) = 0;
+        u(i,j,0) = 2*u(i+1,j,0) - u(i+2,j,0);
+        i=imax;
+        u(i,j,1) = 0;
+        u(i,j,2) = 0;
+        u(i,j,0) = 2*u(i-1,j,0) - u(i-2,j,0);
+    }
+
+    //top wall
+    j = jmax;
+    for(i=0; i<imax; i++)
+    {
+        u(i,j,1) = uinf;
+        u(i,j,2) = 0;
+        u(i,jmax,0) = 2*u(i,jmax-1,0) - u(i,jmax-2,0);
+    }
+
 
 
 }
@@ -829,6 +861,148 @@ double srcmms_ymtm(double x, double y)
 
 /**************************************************************************/
 
+/***********************************************************************************
+    Added method for common use in the calculation process for other outer method
+***********************************************************************************/
+
+// Function used to find beta_2
+
+void Find_beta2_local(Array3& u, double& beta2, int i, int j)
+{
+    double uvel2_local;
+    uvel2_local = pow2(u(i, j, 1)) + pow2(u(i, j, 2));
+    if (uvel2_local > (rkappa * pow2(uinf)))
+        beta2 = uvel2_local;
+    else
+        beta2 = rkappa * pow2(uinf);
+    return;
+}
+
+// Function used to find the maximum eigenvalue in (x,t)
+
+void Find_lambda_x_local(Array3& u, double& lambda_x, double beta2, int i, int j)
+{
+    lambda_x = 0.5 * (u(i, j, 1) + sqrt(pow2(u(i, j, 1) + 4 * beta2)));
+    return;
+}
+
+// Function used to find the maximum eigenvalue in (y,t)
+
+void Find_lambda_y_local(Array3& u, double& lambda_y, double beta2, int i, int j)
+{
+    lambda_y = 0.5 * (u(i, j, 2) + sqrt(pow2(u(i, j, 2) + 4 * beta2)));
+    return;
+}
+
+// Function used to define viscx and calculate the fourth derivative of pressure with respect to x
+
+void Define_viscx_local(Array3& u, double d4pdx4, Array2& viscx, double& beta2, double& lambda_x, double C4)
+{
+    Array2 d4pdx4_set(imax, jmax); // only store or modify the interior nodes for d4pdx4 term
+
+    // For the interior nodes which have actual neighbouring nodes
+    for (int j = 1; j < jmax-1; j++)
+        for (int i = 2; i < imax - 2; i++)
+        {
+            d4pdx4 = (u(i + 2, j, 0) - 4 * u(i + 1, j, 0) + 6 * u(i, j, 0) - 4 * u(i - 1, j, 0) + u(i - 2, j, 0)) / pow4(dx);
+            d4pdx4_set(i, j) = d4pdx4;
+        }
+
+    // Extrapolate to get the d4pdx4 for nodes which are 1 node away from the left and right boundaries
+    for (int j = 1; j < jmax-1; j++)
+    {
+        d4pdx4_set(1, j) = 2 * d4pdx4_set(2, j) - d4pdx4_set(3, j);
+        d4pdx4_set(imax - 2, j) = 2 * d4pdx4_set(imax - 3, j) - d4pdx4_set(imax - 4, j);
+    }
+
+    // viscx also only store interior nodes of (imax-2)*(jmax-2) as d4pdx4
+    for (int i = 1; i < imax-1; i++)
+        {
+        for (int j = 1; j < jmax-1; j++)
+            {
+            Find_beta2_local(u, beta2, i, j);
+            Find_lambda_x_local(u, lambda_x, beta2, i, j);
+            viscx(i, j) = d4pdx4_set(i, j) * (-abs(lambda_x) * C4 * pow3(dx) / beta2);
+            }
+        }
+    return;
+}
+
+// Function used to define viscy and calculate the fourth derivative of pressure with respect to y
+
+void Define_viscy_local(Array3& u, double d4pdy4, Array2& viscy, double& beta2, double& lambda_y, double C4)
+{
+    Array2 d4pdy4_set(imax, jmax); // only store or modify the interior nodes for d4pdx4 term
+
+    // For the interior nodes which have actual neighbouring nodes
+    for (int i = 1; i < imax - 1; i++)
+        for (int j = 2; j < jmax - 2; j++)
+        {
+            d4pdy4 = (u(i, j + 2, 0) - 4 * u(i, j + 1, 0) + 6 * u(i, j, 0) - 4 * u(i, j - 1, 0) + u(i, j - 2, 0)) / pow4(dy);
+            d4pdy4_set(i, j) = d4pdy4;
+        }
+
+    // Extrapolate to get the d4pdy4 for nodes which are 1 node away from the upper and lower boundaries
+    for (int i = 1; i < imax - 1; i++)
+    {
+        d4pdy4_set(i, 1) = 2 * d4pdy4_set(i, 2) - d4pdy4_set(i, 3);
+        d4pdy4_set(i, jmax - 2) = 2 * d4pdy4_set(i, jmax - 3) - d4pdy4_set(i, jmax - 4);
+    }
+
+    // viscy also only store interior nodes of (imax-2)*(jmax-2) as d4pdy4
+    for (int i = 1; i < imax-1; i++)
+        {
+        for (int j = 1; j < jmax-1; j++)
+            {
+            Find_beta2_local(u, beta2, i, j);
+            Find_lambda_y_local(u, lambda_y, beta2, i, j);
+            viscy(i, j) = d4pdy4_set(i, j) * (-abs(lambda_y) * C4 * pow3(dx) / beta2);
+            }
+        }
+    return;
+}
+
+/**************************************************************************/
+
+//beta^2 IS A LOCAL VARIABLE!!!!!!!!!!!
+double Find_Beta_2(Array3 &u, int i, int j)
+{
+    
+    double velocity_mag = pow2(u(i,j,1)) + pow2(u(i,j,2));
+    if(velocity_mag > rkappa*vel2ref)
+    {
+        return velocity_mag;
+    }
+    else
+    {
+        return rkappa*vel2ref;
+    }
+}
+double compute_lambdax_max(Array3 u, double beta2, int i, int j)
+{
+    return .5*(abs(u(i,j,1)) + sqrt(pow2(u(i,j,1)) + (4*pow2(beta2))));
+}
+double compute_lambday_max(Array3 u, double beta2, int i, int j)
+{
+    return .5*(abs(u(i,j,2)) + sqrt(pow2(u(i,j,2)) + (4*pow2(beta2))));
+}
+
+//note that this compares both lambda_x and lambda_y to get local max lambda
+double compute_lambda_max(Array3 u, double beta2, int i, int j)
+{
+    double lambda_x = compute_lambdax_max(u, beta2, i,j);
+    double lambda_y = compute_lambday_max(u, beta2, i,j);
+    if(lambda_x > lambda_y)
+    {
+        return lambda_x;
+    }
+    else
+    {
+        return lambda_y;
+    }
+    
+}
+
 void compute_time_step( Array3& u, Array2& dt, double& dtmin )
 {
     /* 
@@ -852,6 +1026,48 @@ void compute_time_step( Array3& u, Array2& dt, double& dtmin )
 /* !************ADD CODING HERE FOR INTRO CFD STUDENTS************ */
 /* !************************************************************** */
 
+    for(i = 0; i<imax; i++)
+    {
+        for(j = 0; j<jmax; j++)
+        {
+           beta2 = Find_Beta_2(u,i,j);
+           lambda_max = compute_lambda_max(u,beta2,i,j);
+           dt(i,j) = dx/lambda_max; //since mesh is uniform doesn't matter if we use dx or dy
+        }
+    }
+    dtvisc = pow2(dx)/(4*rmu*rhoinv); 
+    dtconv = dtmin;
+    for(i = 0; i<imax; i++)
+    {
+        for(j = 0; j<jmax; j++)
+        {
+            if(dt(i,j) < dtconv)
+            {
+                dtconv = dt(i,j);
+            }
+            
+        }
+    }
+    if(dtvisc < dtconv)
+    {
+        dtmin = dtvisc;
+    }
+    else
+    {
+        dtmin = dtconv;
+    }
+    dtmin = cfl*dtmin;
+
+    //in order to stay consistant with the template and use global time stepping 
+    //adding this line to update dt array to hold only dtmin values
+
+    for(i=0; i<imax; i++)
+    {
+        for(j=0; j<jmax; j++)
+        {
+            dt(i,j) = dtmin;
+        }
+    }
 
 
 }  
@@ -870,19 +1086,21 @@ void Compute_Artificial_Viscosity( Array3& u, Array2& viscx, Array2& viscy )
     int i;                  //i index (x direction)
     int j;                  //j index (y direction)
 
-    double uvel2;       //Local velocity squared
-    double beta2;       //Beta squared parameter for time derivative preconditioning
-    double lambda_x;    //Max absolute value e-value in (x,t)
-    double lambda_y;    //Max absolute value e-value in (y,t)
-    double d4pdx4;      //4th derivative of pressure w.r.t. x
-    double d4pdy4;      //4th derivative of pressure w.r.t. y
+    double uvel2 = 0.0;       //Local velocity squared
+    double beta2 = 0.0;       //Beta squared parameter for time derivative preconditioning
+    double lambda_x = 0.0;    //Max absolute value e-value in (x,t)
+    double lambda_y = 0.0;    //Max absolute value e-value in (y,t)
+    double d4pdx4 = 0.0;      //4th derivative of pressure w.r.t. x
+    double d4pdy4 = 0.0;      //4th derivative of pressure w.r.t. y
 
 /* !************************************************************** */
 /* !************ADD CODING HERE FOR INTRO CFD STUDENTS************ */
 /* !************************************************************** */
 
-
-
+    double C4 = 1 / 16; // define C4
+    Define_viscx_local(u, d4pdx4, viscx, beta2, lambda_x, C4);
+    Define_viscy_local(u, d4pdy4, viscy, beta2, lambda_y, C4);
+    return;
 }
 
 /**************************************************************************/
@@ -917,9 +1135,22 @@ void SGS_forward_sweep( Array3& u, Array2& viscx, Array2& viscy, Array2& dt, Arr
 /* !************ADD CODING HERE FOR INTRO CFD STUDENTS************ */
 /* !************************************************************** */
 
+    for (int i = 1; i < imax - 1; i++)
+        {
+            for (int j = 1; j < jmax - 1; j++)
+            {
+                //get half time step forward for pressure
+                u(i,j,0)=u(i,j,0)-beta2*dt(i,j)*((rho*(u(i+1,j,1)-u(i-1,j,1))/(2*dx))+(rho*(u(i,j+1,2)-u(i,j-1,2))/(2*dy))-(viscx(i,j)+viscy(i,j))-s(i,j,0)); 
+                
+                //get half time step forward for u_vel
+                u(i,j,1)=u(i,j,1)-dt(i,j)/rho*((rho*u(i,j,1)*(u(i+1,j,1)-u(i-1,j,1))/(2*dx))+(rho*u(i,j,2)*(u(i,j+1,1)-u(i,j-1,1))/(2*dy))+(u(i+1,j,0)-u(i-1,j,0))/(2*dx)-rmu*(u(i+1,j,1)-2*u(i,j,1)+u(i-1,j,1))/pow2(dx)-rmu*(u(i,j+1,1)-2*u(i,j,1)+u(i,j-1,1)/pow2(dy)-s(i,j,1)));
+                
+                //get half time step forward for v_vel
+                u(i,j,2)=u(i,j,2)-dt(i,j)/rho*((rho*u(i,j,1)*(u(i+1,j,2)-u(i-1,j,2))/(2*dx))+(rho*u(i,j,2)*(u(i,j+1,2)-u(i,j-1,2))/(2*dy))+(u(i,j+1,0)-u(i,j-1,0))/(2*dy)-rmu*(u(i+1,j,2)-2*u(i,j,2)+u(i-1,j,2))/pow2(dx)-rmu*(u(i,j+1,2)-2*u(i,j,2)+u(i,j-1,2)/pow2(dy)-s(i,j,2)));
 
-
-
+            }
+        }
+    return;
 }
 
 /**************************************************************************/
@@ -955,9 +1186,22 @@ void SGS_backward_sweep( Array3& u, Array2& viscx, Array2& viscy, Array2& dt, Ar
 /* !************ADD CODING HERE FOR INTRO CFD STUDENTS************ */
 /* !************************************************************** */
 
+    for (int i = imax-2; i > 0; i--)
+        {
+            for (int j = jmax-2; j > 0; j--)
+            {
+                //get half time step forward for pressure
+                u(i,j,0)=u(i,j,0)-beta2*dt(i,j)*((rho*(u(i+1,j,1)-u(i-1,j,1))/(2*dx))+(rho*(u(i,j+1,2)-u(i,j-1,2))/(2*dy))-(viscx(i,j)+viscy(i,j))-s(i,j,0)); 
+                
+                //get half time step forward for u_vel
+                u(i,j,1)=u(i,j,1)-dt(i,j)/rho*((rho*u(i,j,1)*(u(i+1,j,1)-u(i-1,j,1))/(2*dx))+(rho*u(i,j,2)*(u(i,j+1,1)-u(i,j-1,1))/(2*dy))+(u(i+1,j,0)-u(i-1,j,0))/(2*dx)-rmu*(u(i+1,j,1)-2*u(i,j,1)+u(i-1,j,1))/pow2(dx)-rmu*(u(i,j+1,1)-2*u(i,j,1)+u(i,j-1,1)/pow2(dy)-s(i,j,1)));
+                
+                //get half time step forward for v_vel
+                u(i,j,2)=u(i,j,2)-dt(i,j)/rho*((rho*u(i,j,1)*(u(i+1,j,2)-u(i-1,j,2))/(2*dx))+(rho*u(i,j,2)*(u(i,j+1,2)-u(i,j-1,2))/(2*dy))+(u(i,j+1,0)-u(i,j-1,0))/(2*dy)-rmu*(u(i+1,j,2)-2*u(i,j,2)+u(i-1,j,2))/pow2(dx)-rmu*(u(i,j+1,2)-2*u(i,j,2)+u(i,j-1,2)/pow2(dy)-s(i,j,2)));
 
-
-
+            }
+        }
+    return;
 }
 
 /**************************************************************************/
@@ -1098,6 +1342,119 @@ void check_iterative_convergence(int n, Array3& u, Array3& uold, Array2& dt, dou
 /* !************ADD CODING HERE FOR INTRO CFD STUDENTS************ */
 /* !************************************************************** */
 
+    Array2 viscx (imax, jmax);
+    Array2 viscy (imax, jmax);
+    Array3 source  (imax, jmax, neq);
+    double residual_variable;
+    //need viscosity for the residual calculation
+    Compute_Artificial_Viscosity(u, viscx, viscy);
+
+    //calling this function so that we can have access to the source terms
+    compute_source_terms(source);
+    //computing pressure residual first
+    if(imms == 0)
+    {
+        for(i=0; i<imax; i++)
+        {
+            for(j=0; j<jmax; j++)
+            {
+                double dudx = (u(i+1,j,1)-u(i-1,j,1))/(2*dx);
+                double dvdy = (u(i,j+1,2)-u(i,j-1,2))/(2*dy);
+                //need to hold the residual calculation at the ij node somehow
+                residual_variable = pow2(rho*(dudx+dvdy)-(viscx(i,j)+viscy(i,j)));
+                //the norm involves a summation
+                res[0] = res[0] + residual_variable;
+            }
+        }
+        //note that res[0] holds the summation part of the norm
+        //so why not just use it to finish the norm calculation
+        //note that there are imax*jmax points total here since the norm involves 
+        //dividing by the total number of points
+        res[0] = sqrt(res[0]/(imax*jmax));
+        //note we are looking at the ratio of the current residual with the initial one
+        //and makes sense that the last step stores it in res[0] since res stands for residual
+        res[0] = res[0]/resinit[0];
+    
+        //lets compute the u velocity residual now 
+        for(i=0; i<imax; i++)
+        {
+            for(j=0; j<jmax; j++)
+            {
+                double dudx = (u(i+1,j,1)-u(i-1,j,1))/(2*dx);
+                double dudy = (u(i,j+1,1)-u(i,j-1,1))/(2*dy);
+                double dpdx = (u(i+1,j,0)-u(i-1,j,0))/(2*dx);
+                double d2udx2 = (u(i+1,j,1)-2*u(i,j,1)+u(i-1,j,1))/(pow2(dx));
+                double d2udy2 = (u(i,j+1,1)-2*u(i,j,1)+u(i,j-1,1))/(pow2(dy));
+                residual_variable = pow2(rho*(u(i,j,1)*dudx+u(i,j,2)*dudy)+dpdx-rmu*(d2udx2+d2udy2));
+                res[1] = res[1] + residual_variable;
+            }
+        }
+        res[1] = sqrt(res[1]/(imax*jmax));
+        res[1] = res[1]/resinit[1];
+
+        //lets compute the v velocity residual now 
+        for(i=0; i<imax; i++)
+        {
+            for(j=0; j<jmax; j++)
+            {
+                double dvdx = (u(i+1,j,2)-u(i-1,j,2))/(2*dx);
+                double dvdy = (u(i,j+1,2)-u(i,j-1,2))/(2*dy);
+                double dpdy = (u(i,j+1,0)-u(i,j-1,0))/(2*dy);
+                double d2vdx2 = (u(i+1,j,2)-2*u(i,j,2)+u(i-1,j,2))/(pow2(dx));
+                double d2vdy2 = (u(i,j+1,2)-2*u(i,j,2)+u(i,j-1,2))/(pow2(dy));
+                residual_variable = pow2(rho*(u(i,j,1)*dvdx+u(i,j,2)*dvdy)+dpdy-rmu*(d2vdx2+d2vdy2));
+                res[2] = res[2] + residual_variable;
+            }
+        }
+        res[2] = sqrt(res[2]/(imax*jmax));
+        res[2] = res[2]/resinit[2];
+    }
+    //the else branch is for the manufactured solution
+    else
+    {
+        for(i=0; i<imax; i++)
+        {
+            for(j=0; j<jmax; j++)
+            {
+                double dudx = (u(i+1,j,1)-u(i-1,j,1))/(2*dx);
+                double dvdy = (u(i,j+1,2)-u(i,j-1,2))/(2*dy);
+                residual_variable = pow2(rho*(dudx+dvdy)-(viscx(i,j)+viscy(i,j))-source(i,j,0));
+                res[0] = res[0] + residual_variable;
+            }
+        }
+        res[0] = sqrt(res[0]/(imax*jmax));
+        res[0] = res[0]/resinit[0]; 
+        for(i=0; i<imax; i++)
+        {
+            for(j=0; j<jmax; j++)
+            {
+                double dudx = (u(i+1,j,1)-u(i-1,j,1))/(2*dx);
+                double dudy = (u(i,j+1,1)-u(i,j-1,1))/(2*dy);
+                double dpdx = (u(i+1,j,0)-u(i-1,j,0))/(2*dx);
+                double d2udx2 = (u(i+1,j,1)-2*u(i,j,1)+u(i-1,j,1))/(pow2(dx));
+                double d2udy2 = (u(i,j+1,1)-2*u(i,j,1)+u(i,j-1,1))/(pow2(dy));
+                residual_variable = pow2(rho*(u(i,j,1)*dudx+u(i,j,2)*dudy)+dpdx-rmu*(d2udx2+d2udy2)-source(i,j,1));
+                res[1] = res[1] + residual_variable;
+            }
+        }
+        res[1] = sqrt(res[1]/(imax*jmax));
+        res[1] = res[1]/resinit[1];
+        for(i=0; i<imax; i++)
+        {
+            for(j=0; j<jmax; j++)
+            {
+                double dvdx = (u(i+1,j,2)-u(i-1,j,2))/(2*dx);
+                double dvdy = (u(i,j+1,2)-u(i,j-1,2))/(2*dy);
+                double dpdy = (u(i,j+1,0)-u(i,j-1,0))/(2*dy);
+                double d2vdx2 = (u(i+1,j,2)-2*u(i,j,2)+u(i-1,j,2))/(pow2(dx));
+                double d2vdy2 = (u(i,j+1,2)-2*u(i,j,2)+u(i,j-1,2))/(pow2(dy));
+                residual_variable = pow2(rho*(u(i,j,1)*dvdx+u(i,j,2)*dvdy)+dpdy-rmu*(d2vdx2+d2vdy2)-source(i,j,2));
+                res[2] = res[2] + residual_variable;
+            }
+        }
+        res[2] = sqrt(res[2]/(imax*jmax));
+        res[2] = res[2]/resinit[2];
+    }
 
 
 
@@ -1112,6 +1469,16 @@ void check_iterative_convergence(int n, Array3& u, Array3& uold, Array2& dt, dou
         {
             printf("Iter. Time (s)   dt (s)      Continuity    x-Momentum    y-Momentum\n"); 
         }    
+    }
+
+    conv = res[0];
+    if(res[1]>=conv)
+    {
+        conv = res[1];
+    } 
+    if(res[2] > conv)
+    {
+        conv = res[2];
     }
      
 }
@@ -1142,10 +1509,88 @@ void Discretization_Error_Norms( Array3& u )
 /* !************************************************************** */
 /* !************ADD CODING HERE FOR INTRO CFD STUDENTS************ */
 /* !************************************************************** */
+    // initialise each L1 norm
 
+        rL1norm[0]=0.0;
+        rL1norm[1]=0.0;
+        rL1norm[2]=0.0;
 
+    // calculate the L1 norms for each u component 
 
+        for(int i = 0; i < imax; i++) // incluing the boundary nodes
+        {
+            for( int j = 0; j < jmax; j++)
+            {
+                x = i*dx;
+                y = j*dy;
+                rL1norm[0]+=abs(u(i,j,0)-umms(x,y,0));
+                rL1norm[1]+=abs(u(i,j,1)-umms(x,y,1));
+                rL1norm[2]+=abs(u(i,j,2)-umms(x,y,2));
+            }
+        }
 
+    // each term gets devided by imax*jmax 
+    
+        rL1norm[0]=rL1norm[0]/(imax*jmax);
+        rL1norm[1]=rL1norm[1]/(imax*jmax);
+        rL1norm[2]=rL1norm[2]/(imax*jmax);  
+    
+    // initialise each L2 norm
+
+        rL2norm[0]=0.0;
+        rL2norm[1]=0.0;
+        rL2norm[2]=0.0;
+
+    // calculate the L2 norms for each u component 
+
+        for(int i = 0; i < imax; i++) // incluing the boundary nodes
+        {
+            for( int j = 0; j < jmax; j++)
+            {
+                x = i*dx;
+                y = j*dy;
+                rL2norm[0]+=pow2(u(i,j,0)-umms(x,y,0));
+                rL2norm[1]+=pow2(u(i,j,1)-umms(x,y,1));
+                rL2norm[2]+=pow2(u(i,j,2)-umms(x,y,2));
+            }
+        } 
+        rL2norm[0]=sqrt(rL2norm[0]/(imax*jmax));
+        rL2norm[1]=sqrt(rL2norm[1]/(imax*jmax));
+        rL2norm[2]=sqrt(rL2norm[2]/(imax*jmax));
+
+    
+    // initialise each Linf norm
+
+        rLinfnorm[0]=0.0;
+        rLinfnorm[1]=0.0;
+        rLinfnorm[2]=0.0;
+    
+        double rLinfnorm_ele[3] = {0.0, 0.0, 0.0};
+
+    // calculate the Linf norms for each u component 
+
+        for(int i = 0; i < imax; i++) // incluing the boundary nodes
+        {
+            for( int j = 0; j < jmax; j++)
+            {
+                x = i*dx;
+                y = j*dy;
+                rLinfnorm_ele[0] = abs(u(i,j,0)-umms(x,y,0));
+                rLinfnorm_ele[1] = abs(u(i,j,1)-umms(x,y,1));
+                rLinfnorm_ele[2] = abs(u(i,j,2)-umms(x,y,2));
+                if(rLinfnorm[0] < rLinfnorm_ele[0])
+                rLinfnorm[0] = rLinfnorm_ele[0];
+                if(rLinfnorm[1] < rLinfnorm_ele[1])
+                rLinfnorm[1] = rLinfnorm_ele[1];
+                if(rLinfnorm[2] < rLinfnorm_ele[2])
+                rLinfnorm[2] = rLinfnorm_ele[2];           
+            }
+        } 
+        
+        //
+        FILE* fp_norm; // flie used to generate norms
+        fp_norm=fopen("./norm.out","w");
+        fprintf(fp_norm,"The L2 norms of mesh Level k: %f %f %f \n", rL2norm[0], rL2norm[1], rL2norm[2]);
     }
 }
 
