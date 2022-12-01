@@ -43,7 +43,7 @@ using namespace std;
   const int nmax = 500000;             /* Maximum number of iterations */
   const int iterout = 5000;             /* Number of time steps between solution output */
   const int imms = 1;                   /* Manufactured solution flag: = 1 for manuf. sol., = 0 otherwise */
-  const int isgs = 1;                   /* Symmetric Gauss-Seidel  flag: = 1 for SGS, = 0 for point Jacobi */
+  const int isgs = 0;                   /* Symmetric Gauss-Seidel  flag: = 1 for SGS, = 0 for point Jacobi */
   const int irstr = 0;                  /* Restart flag: = 1 for restart (file 'restart.in', = 0 for initial run */
   const int ipgorder = 0;               /* Order of pressure gradient: 0 = 2nd, 1 = 3rd (not needed) */
   const int lim = 0;                    /* variable to be used as the limiter sensor (= 0 for pressure) */
@@ -52,9 +52,9 @@ using namespace std;
   const double cfl  = 0.9;              /* CFL number used to determine time step */
   const double Cx = 0.01;               /* Parameter for 4th order artificial viscosity in x */
   const double Cy = 0.01;               /* Parameter for 4th order artificial viscosity in y */
-  const double toler = 1.e-10;          /* Tolerance for iterative residual convergence */
+  const double toler = 1.e-8;          /* Tolerance for iterative residual convergence */
   const double rkappa = 0.1;            /* Time derivative preconditioning constant */
-  const double Re = 100.0;              /* Reynolds number = rho*Uinf*L/rmu */
+  const double Re = 10.0;              /* Reynolds number = rho*Uinf*L/rmu */
   const double pinf = 0.801333844662;   /* Initial pressure (N/m^2) -> from MMS value at cavity center */
   const double uinf = 1.0;              /* Lid velocity (m/s) */
   const double rho = 1.0;               /* Density (kg/m^3) */
@@ -980,18 +980,23 @@ double Find_Beta_2(Array3 &u, int i, int j)
 }
 double compute_lambdax_max(Array3 u, double beta2, int i, int j)
 {
-    return .5*(abs(u(i,j,1)) + sqrt(pow2(u(i,j,1)) + (4*pow2(beta2))));
+    double result_x = .5*(abs(u(i,j,1)) + sqrt(pow2(u(i,j,1)) + (4*pow2(beta2))));
+    return result_x;
 }
 double compute_lambday_max(Array3 u, double beta2, int i, int j)
 {
-    return .5*(abs(u(i,j,2)) + sqrt(pow2(u(i,j,2)) + (4*pow2(beta2))));
+    double result_y = .5*(abs(u(i,j,2)) + sqrt(pow2(u(i,j,2)) + (4*pow2(beta2))));
+    return result_y;
 }
 
+
 //note that this compares both lambda_x and lambda_y to get local max lambda
-double compute_lambda_max(Array3 u, double beta2, int i, int j)
+double compute_lambda_max(Array3& u, double& lambda_x, double& lambda_y, double beta2, int i, int j)
 {
-    double lambda_x = compute_lambdax_max(u, beta2, i,j);
-    double lambda_y = compute_lambday_max(u, beta2, i,j);
+    //double lambda_x = compute_lambdax_max(u, beta2, i,j);
+    Find_lambda_x_local(u, lambda_x, beta2, i, j);
+    //double lambda_y = compute_lambday_max(u, beta2, i,j);
+    Find_lambda_y_local(u, lambda_y, beta2, i, j);
     if(lambda_x > lambda_y)
     {
         return lambda_x;
@@ -1031,7 +1036,7 @@ void compute_time_step( Array3& u, Array2& dt, double& dtmin )
         for(j = 0; j<jmax; j++)
         {
            beta2 = Find_Beta_2(u,i,j);
-           lambda_max = compute_lambda_max(u,beta2,i,j);
+           lambda_max = compute_lambda_max(u, lambda_x, lambda_y, beta2, i, j);
            dt(i,j) = dx/lambda_max; //since mesh is uniform doesn't matter if we use dx or dy
         }
     }
@@ -1319,6 +1324,7 @@ void pressure_rescaling( Array3& u )
 
 /**************************************************************************/
 
+
 void check_iterative_convergence(int n, Array3& u, Array3& uold, Array2& dt, double res[neq], double resinit[neq], int ninit, double rtime, double dtmin, double& conv)
 {
   /* 
@@ -1341,7 +1347,7 @@ void check_iterative_convergence(int n, Array3& u, Array3& uold, Array2& dt, dou
 /* !************************************************************** */
 /* !************ADD CODING HERE FOR INTRO CFD STUDENTS************ */
 /* !************************************************************** */
-
+#if 1
     Array2 viscx (imax, jmax);
     Array2 viscy (imax, jmax);
     Array3 source  (imax, jmax, neq);
@@ -1412,21 +1418,25 @@ void check_iterative_convergence(int n, Array3& u, Array3& uold, Array2& dt, dou
     //the else branch is for the manufactured solution
     else
     {
-        for(i=0; i<imax; i++)
+        for(i=1; i<imax-1; i++)
         {
-            for(j=0; j<jmax; j++)
+            for(j=1; j<jmax-1; j++)
             {
                 double dudx = (u(i+1,j,1)-u(i-1,j,1))/(2*dx);
                 double dvdy = (u(i,j+1,2)-u(i,j-1,2))/(2*dy);
                 residual_variable = pow2(rho*(dudx+dvdy)-(viscx(i,j)+viscy(i,j))-source(i,j,0));
+                //residual_variable = pow2(rho*(dudx+dvdy)-(viscx(i,j)+viscy(i,j))-source(i,j,0));
+                //double viscx_ele = viscx(i,j);
+                //double viscy_ele = viscy(i,j);
+                //double source_ele = source(i,j,0); 
                 res[0] = res[0] + residual_variable;
             }
         }
         res[0] = sqrt(res[0]/(imax*jmax));
         res[0] = res[0]/resinit[0]; 
-        for(i=0; i<imax; i++)
+        for(i=1; i<imax-1; i++)
         {
-            for(j=0; j<jmax; j++)
+            for(j=1; j<jmax-1; j++)
             {
                 double dudx = (u(i+1,j,1)-u(i-1,j,1))/(2*dx);
                 double dudy = (u(i,j+1,1)-u(i,j-1,1))/(2*dy);
@@ -1439,9 +1449,9 @@ void check_iterative_convergence(int n, Array3& u, Array3& uold, Array2& dt, dou
         }
         res[1] = sqrt(res[1]/(imax*jmax));
         res[1] = res[1]/resinit[1];
-        for(i=0; i<imax; i++)
+        for(i=1; i<imax-1; i++)
         {
-            for(j=0; j<jmax; j++)
+            for(j=1; j<jmax-1; j++)
             {
                 double dvdx = (u(i+1,j,2)-u(i-1,j,2))/(2*dx);
                 double dvdy = (u(i,j+1,2)-u(i,j-1,2))/(2*dy);
@@ -1455,7 +1465,7 @@ void check_iterative_convergence(int n, Array3& u, Array3& uold, Array2& dt, dou
         res[2] = sqrt(res[2]/(imax*jmax));
         res[2] = res[2]/resinit[2];
     }
-
+#endif
 
 
     /* Write iterative residuals every "residualOut" iterations */
@@ -1470,7 +1480,7 @@ void check_iterative_convergence(int n, Array3& u, Array3& uold, Array2& dt, dou
             printf("Iter. Time (s)   dt (s)      Continuity    x-Momentum    y-Momentum\n"); 
         }    
     }
-
+#if 1
     conv = res[0];
     if(res[1]>=conv)
     {
@@ -1480,7 +1490,7 @@ void check_iterative_convergence(int n, Array3& u, Array3& uold, Array2& dt, dou
     {
         conv = res[2];
     }
-     
+#endif     
 }
 
 /**************************************************************************/
@@ -1613,6 +1623,7 @@ void Discretization_Error_Norms( Array3& u )
 /********************************************************************************************************************/
 int main()
 {
+
     //Data class declarations: hold all the data needed across the entire grid
     Array3 u     (imax, jmax, neq);     //u and uold store the current and previous primitive variable solution on the entire grid
     Array3 uold  (imax, jmax, neq);
