@@ -40,7 +40,7 @@ using namespace std;
   
 /*--------- User sets inputs here  --------*/
 
-  const int nmax = 500000;             /* Maximum number of iterations */
+  const int nmax = 999999;             /* Maximum number of iterations */
   const int iterout = 5000;             /* Number of time steps between solution output */
   const int imms = 1;                   /* Manufactured solution flag: = 1 for manuf. sol., = 0 otherwise */
   const int isgs = 0;                   /* Symmetric Gauss-Seidel  flag: = 1 for SGS, = 0 for point Jacobi */
@@ -49,10 +49,10 @@ using namespace std;
   const int lim = 0;                    /* variable to be used as the limiter sensor (= 0 for pressure) */
   const int residualOut = 10;           /* Number of timesteps between residual output */
 
-  const double cfl  = 0.9;              /* CFL number used to determine time step */
+  const double cfl  = 1.0;              /* CFL number used to determine time step */
   const double Cx = 0.01;               /* Parameter for 4th order artificial viscosity in x */
   const double Cy = 0.01;               /* Parameter for 4th order artificial viscosity in y */
-  const double toler = 1.e-8;          /* Tolerance for iterative residual convergence */
+  const double toler = 1.0e-8;          /* Tolerance for iterative residual convergence */
   const double rkappa = 0.1;            /* Time derivative preconditioning constant */
   const double Re = 10.0;              /* Reynolds number = rho*Uinf*L/rmu */
   const double pinf = 0.801333844662;   /* Initial pressure (N/m^2) -> from MMS value at cavity center */
@@ -296,6 +296,7 @@ inline double pow4(double x)                      /* Returns x^4 ... Duplicates 
   FILE *fp3; /* For writing the restart file */
   FILE *fp4; /* For reading the restart file */  
   FILE *fp5; /* For output of final DE norms (only for MMS)*/  
+  FILE *fp6; /* Generate first 5 colums from cavity.dat file*/
 //$$$$$$   FILE *fp6; /* For debug: Uncomment for debugging. */  
 
 /***********************************************************************************************************/
@@ -383,10 +384,15 @@ void output_file_headers()
 
     fp2 = fopen("./cavity.dat","w");
     fprintf(fp2,"TITLE = \"Cavity Field Data\"\n");
+
+    fp6 = fopen("./cavity_first_five.dat","w");
     if(imms==1)
     {
         fprintf(fp2,"variables=\"x(m)\"\"y(m)\"\"p(N/m^2)\"\"u(m/s)\"\"v(m/s)\"");\
-        fprintf(fp2,"\"p-exact\"\"u-exact\"\"v-exact\"\"DE-p\"\"DE-u\"\"DE-v\"\n");      
+        fprintf(fp2,"\"p-exact\"\"u-exact\"\"v-exact\"\"DE-p\"\"DE-u\"\"DE-v\"\n"); 
+    // Only for the first five
+        fprintf(fp6,"variables=\"x(m)\"\"y(m)\"\"p(N/m^2)\"\"u(m/s)\"\"v(m/s)\"");\
+                 
     }
     else
     {
@@ -617,6 +623,10 @@ void write_output(int n, Array3& u, Array2& dt, double resinit[neq], double rtim
     fprintf(fp2, "zone T=\"n=%d\"\n",n);
     fprintf(fp2, "I= %d J= %d\n",imax, jmax);
     fprintf(fp2, "DATAPACKING=POINT\n");
+    // only for first five
+    fprintf(fp6, "zone T=\"n=%d\"\n",n);
+    fprintf(fp6, "I= %d J= %d\n",imax, jmax);
+    fprintf(fp6, "DATAPACKING=POINT\n");
 
     if(imms==1) 
     {
@@ -629,6 +639,16 @@ void write_output(int n, Array3& u, Array2& dt, double resinit[neq], double rtim
                 fprintf(fp2,"%e %e %e %e %e %e %e %e %e %e %e\n", x, y, u(i,j,0), u(i,j,1), u(i,j,2), 
                                                umms(x,y,0), umms(x,y,1), umms(x,y,2), 
                                                 (u(i,j,0)-umms(x,y,0)), (u(i,j,1)-umms(x,y,1)), (u(i,j,2)-umms(x,y,2)));
+            }
+        } 
+        // only for first five   
+        for(i=0; i<imax; i++)
+        {
+            for(j=0; j<jmax; j++)
+            {
+                x = (xmax - xmin)*(double)(i)/(double)(imax - 1);
+                y = (ymax - ymin)*(double)(j)/(double)(jmax - 1);
+                fprintf(fp6,"%e %e %e %e %e\n", x, y, u(i,j,0), u(i,j,1), u(i,j,2));
             }
         }    
     }
@@ -1070,7 +1090,7 @@ void compute_time_step( Array3& u, Array2& dt, double& dtmin )
     {
         for(j=0; j<jmax; j++)
         {
-            dt(i,j) = dtmin;
+            dt(i,j) = cfl*dtmin;
         }
     }
 
