@@ -43,7 +43,7 @@ using namespace std;
   const int nmax = 500000;             /* Maximum number of iterations */
   const int iterout = 5000;             /* Number of time steps between solution output */
   const int imms = 1;                   /* Manufactured solution flag: = 1 for manuf. sol., = 0 otherwise */
-  const int isgs = 0;                   /* Symmetric Gauss-Seidel  flag: = 1 for SGS, = 0 for point Jacobi */
+  const int isgs = 1;                   /* Symmetric Gauss-Seidel  flag: = 1 for SGS, = 0 for point Jacobi */
   const int irstr = 0;                  /* Restart flag: = 1 for restart (file 'restart.in', = 0 for initial run */
   const int ipgorder = 0;               /* Order of pressure gradient: 0 = 2nd, 1 = 3rd (not needed) */
   const int lim = 0;                    /* variable to be used as the limiter sensor (= 0 for pressure) */
@@ -869,11 +869,13 @@ double srcmms_ymtm(double x, double y)
 
 void Find_beta2_local(Array3& u, double& beta2, int i, int j)
 {
+    #if 1
     double uvel2_local;
     uvel2_local = pow2(u(i, j, 1)) + pow2(u(i, j, 2));
     if (uvel2_local > (rkappa * pow2(uinf)))
         beta2 = uvel2_local;
     else
+    #endif
         beta2 = rkappa * pow2(uinf);
     return;
 }
@@ -907,7 +909,22 @@ void Define_viscx_local(Array3& u, double d4pdx4, Array2& viscx, double& beta2, 
             d4pdx4 = (u(i + 2, j, 0) - 4 * u(i + 1, j, 0) + 6 * u(i, j, 0) - 4 * u(i - 1, j, 0) + u(i - 2, j, 0)) / pow4(dx);
             d4pdx4_set(i, j) = d4pdx4;
         }
+    // calculate the viscosity source first and do the extrapolaion later
+    for (int j = 1; j < jmax-1; j++)
+        for (int i = 2; i < imax - 2; i++)
+        {
+            Find_beta2_local(u, beta2, i, j);
+            Find_lambda_x_local(u, lambda_x, beta2, i, j);
+            viscx(i, j) = d4pdx4_set(i, j) * (-abs(lambda_x) * C4 * pow3(dx) / beta2);
+        }
+    // do the extrapolaion
+    for (int j = 1; j < jmax-1; j++)
+        {
+        viscx(1, j) = 2 * viscx(2, j) - viscx(3, j);
+        viscx(imax - 2, j) = 2 * viscx(imax - 3, j) - viscx(imax - 4, j);
+        }
 
+    #if 0
     // Extrapolate to get the d4pdx4 for nodes which are 1 node away from the left and right boundaries
     for (int j = 1; j < jmax-1; j++)
     {
@@ -925,6 +942,7 @@ void Define_viscx_local(Array3& u, double d4pdx4, Array2& viscx, double& beta2, 
             viscx(i, j) = d4pdx4_set(i, j) * (-abs(lambda_x) * C4 * pow3(dx) / beta2);
             }
         }
+    #endif 
     return;
 }
 
@@ -941,7 +959,22 @@ void Define_viscy_local(Array3& u, double d4pdy4, Array2& viscy, double& beta2, 
             d4pdy4 = (u(i, j + 2, 0) - 4 * u(i, j + 1, 0) + 6 * u(i, j, 0) - 4 * u(i, j - 1, 0) + u(i, j - 2, 0)) / pow4(dy);
             d4pdy4_set(i, j) = d4pdy4;
         }
+    // calculate the viscosity source first and do the extrapolaion later
+    for (int i = 1; i < imax - 1; i++)
+        for (int j = 2; j < jmax - 2; j++)
+        {
+            Find_beta2_local(u, beta2, i, j);
+            Find_lambda_y_local(u, lambda_y, beta2, i, j);
+            viscy(i, j) = d4pdy4_set(i, j) * (-abs(lambda_y) * C4 * pow3(dx) / beta2);
+        }
+    // do the extrapolaion
+    for (int i = 1; i < imax - 1; i++)
+        {
+        viscy(i, 1) = 2 * viscy(i, 2) - viscy(i, 3);
+        viscy(i, jmax - 2) = 2 * viscy(i, jmax - 3) - viscy(i, jmax - 4);
+        }
 
+    #if 0
     // Extrapolate to get the d4pdy4 for nodes which are 1 node away from the upper and lower boundaries
     for (int i = 1; i < imax - 1; i++)
     {
@@ -959,6 +992,7 @@ void Define_viscy_local(Array3& u, double d4pdy4, Array2& viscy, double& beta2, 
             viscy(i, j) = d4pdy4_set(i, j) * (-abs(lambda_y) * C4 * pow3(dx) / beta2);
             }
         }
+    #endif
     return;
 }
 
@@ -1030,10 +1064,10 @@ void compute_time_step( Array3& u, Array2& dt, double& dtmin )
 /* !************************************************************** */
 /* !************ADD CODING HERE FOR INTRO CFD STUDENTS************ */
 /* !************************************************************** */
-
-    for(i = 0; i<imax; i++)
+    //changed to interior nodes only
+    for(i = 1; i<imax-1; i++)
     {
-        for(j = 0; j<jmax; j++)
+        for(j = 1; j<jmax-1; j++)
         {
            beta2 = Find_Beta_2(u,i,j);
            lambda_max = compute_lambda_max(u, lambda_x, lambda_y, beta2, i, j);
@@ -1041,10 +1075,14 @@ void compute_time_step( Array3& u, Array2& dt, double& dtmin )
         }
     }
     dtvisc = pow2(dx)/(4*rmu*rhoinv); 
-    dtconv = dtmin;
-    for(i = 0; i<imax; i++)
+    
+    double dtmin_global = 1.0e99;
+    
+    dtconv = dtmin_global;
+    //changed to interior nodes only
+    for(i = 1; i<imax-1; i++)
     {
-        for(j = 0; j<jmax; j++)
+        for(j = 1; j<jmax-1; j++)
         {
             if(dt(i,j) < dtconv)
             {
@@ -1053,6 +1091,7 @@ void compute_time_step( Array3& u, Array2& dt, double& dtmin )
             
         }
     }
+    #if 1
     if(dtvisc < dtconv)
     {
         dtmin = dtvisc;
@@ -1062,18 +1101,22 @@ void compute_time_step( Array3& u, Array2& dt, double& dtmin )
         dtmin = dtconv;
     }
     dtmin = cfl*dtmin;
-
+    #endif
+    
+    //dtmin = cfl*dtvisc;
+    
     //in order to stay consistant with the template and use global time stepping 
     //adding this line to update dt array to hold only dtmin values
 
-    for(i=0; i<imax; i++)
+    //changed to interior nodes only
+    for(i=1; i<imax-1; i++)
     {
-        for(j=0; j<jmax; j++)
+        for(j=1; j<jmax-1; j++)
         {
             dt(i,j) = dtmin;
         }
     }
-
+    
 
 }  
 
@@ -1102,7 +1145,7 @@ void Compute_Artificial_Viscosity( Array3& u, Array2& viscx, Array2& viscy )
 /* !************ADD CODING HERE FOR INTRO CFD STUDENTS************ */
 /* !************************************************************** */
 
-    double C4 = 1 / 16; // define C4
+    double C4 = 1.0/128.0; // define C4, reduce C4 to stablize
     Define_viscx_local(u, d4pdx4, viscx, beta2, lambda_x, C4);
     Define_viscy_local(u, d4pdy4, viscy, beta2, lambda_y, C4);
     return;
@@ -1139,20 +1182,47 @@ void SGS_forward_sweep( Array3& u, Array2& viscx, Array2& viscy, Array2& dt, Arr
 /* !************************************************************** */
 /* !************ADD CODING HERE FOR INTRO CFD STUDENTS************ */
 /* !************************************************************** */
-
+    Array3 uold(imax, jmax, neq);
     for (int i = 1; i < imax - 1; i++)
         {
             for (int j = 1; j < jmax - 1; j++)
             {
+                uold.copyData(u);
+                Find_beta2_local(u, beta2, i, j);
                 //get half time step forward for pressure
-                u(i,j,0)=u(i,j,0)-beta2*dt(i,j)*((rho*(u(i+1,j,1)-u(i-1,j,1))/(2*dx))+(rho*(u(i,j+1,2)-u(i,j-1,2))/(2*dy))-(viscx(i,j)+viscy(i,j))-s(i,j,0)); 
+                dudx = (u(i+1,j,1)-u(i-1,j,1))/(2*dx);
+                dudy = (u(i,j+1,1)-u(i,j-1,1))/(2*dy);
                 
-                //get half time step forward for u_vel
-                u(i,j,1)=u(i,j,1)-dt(i,j)/rho*((rho*u(i,j,1)*(u(i+1,j,1)-u(i-1,j,1))/(2*dx))+(rho*u(i,j,2)*(u(i,j+1,1)-u(i,j-1,1))/(2*dy))+(u(i+1,j,0)-u(i-1,j,0))/(2*dx)-rmu*(u(i+1,j,1)-2*u(i,j,1)+u(i-1,j,1))/pow2(dx)-rmu*(u(i,j+1,1)-2*u(i,j,1)+u(i,j-1,1)/pow2(dy)-s(i,j,1)));
-                
-                //get half time step forward for v_vel
-                u(i,j,2)=u(i,j,2)-dt(i,j)/rho*((rho*u(i,j,1)*(u(i+1,j,2)-u(i-1,j,2))/(2*dx))+(rho*u(i,j,2)*(u(i,j+1,2)-u(i,j-1,2))/(2*dy))+(u(i,j+1,0)-u(i,j-1,0))/(2*dy)-rmu*(u(i+1,j,2)-2*u(i,j,2)+u(i-1,j,2))/pow2(dx)-rmu*(u(i,j+1,2)-2*u(i,j,2)+u(i,j-1,2)/pow2(dy)-s(i,j,2)));
+                double u_f_y = u(i,j+1,1);
+                double u_b_y = u(i,j-1,1);
+                double uold_ele = uold(i,j,1); 
 
+                d2udx2 = (u(i+1,j,1)-2*uold(i,j,1)+u(i-1,j,1))/(pow2(dx));
+                d2udy2 = (u(i,j+1,1)-2*uold(i,j,1)+u(i,j-1,1))/(pow2(dy));
+                dpdx = (u(i+1,j,0)-u(i-1,j,0))/(2*dx);
+                dpdy = (u(i,j+1,0)-u(i,j-1,0))/(2*dy);
+                dvdx = (u(i+1,j,2)-u(i-1,j,2))/(2*dx);
+                dvdy = (u(i,j+1,2)-u(i,j-1,2))/(2*dy);
+                d2vdx2 = (u(i+1,j,2)-2*uold(i,j,2)+u(i-1,j,2))/(pow2(dx));
+                d2vdy2 = (u(i,j+1,2)-2*uold(i,j,2)+u(i,j-1,2))/(pow2(dy));
+                
+                u(i,j,0)=uold(i,j,0)-beta2*dt(i,j)*(rho*dudx+rho*dvdy-(viscx(i,j)+viscy(i,j))-s(i,j,0));
+
+                //u(i,j,0)=u(i,j,0)-beta2*dt(i,j)*((rho*(u(i+1,j,1)-u(i-1,j,1))/(2*dx))+(rho*(u(i,j+1,2)-u(i,j-1,2))/(2*dy))-(viscx(i,j)+viscy(i,j))-s(i,j,0)); 
+                double p_ele = u(i,j,0);
+                double viscx_ele = viscx(i,j);
+                double viscy_ele = viscy(i,j);
+                double t_ele = dt(i,j);
+
+                //get half time step forward for u_vel
+                u(i,j,1)=uold(i,j,1)-dt(i,j)/rho*((rho*uold(i,j,1)*dudx)+(rho*uold(i,j,2)*dudy)+dpdx-rmu*d2udx2-rmu*d2udy2-s(i,j,1));
+                //u(i,j,1)=u(i,j,1)-dt(i,j)/rho*((rho*u(i,j,1)*(u(i+1,j,1)-u(i-1,j,1))/(2*dx))+(rho*u(i,j,2)*(u(i,j+1,1)-u(i,j-1,1))/(2*dy))+(u(i+1,j,0)-u(i-1,j,0))/(2*dx)-rmu*(u(i+1,j,1)-2*u(i,j,1)+u(i-1,j,1))/pow2(dx)-rmu*(u(i,j+1,1)-2*u(i,j,1)+u(i,j-1,1)/pow2(dy)-s(i,j,1)));
+                double u_ele = u(i,j,1);
+
+                //get half time step forward for v_vel
+                u(i,j,2)=uold(i,j,2)-dt(i,j)/rho*((rho*uold(i,j,1)*dvdx)+(rho*uold(i,j,2)*dvdy)+dpdy-rmu*d2vdx2-rmu*d2vdy2-s(i,j,2));
+                //u(i,j,2)=u(i,j,2)-dt(i,j)/rho*((rho*u(i,j,1)*(u(i+1,j,2)-u(i-1,j,2))/(2*dx))+(rho*u(i,j,2)*(u(i,j+1,2)-u(i,j-1,2))/(2*dy))+(u(i,j+1,0)-u(i,j-1,0))/(2*dy)-rmu*(u(i+1,j,2)-2*u(i,j,2)+u(i-1,j,2))/pow2(dx)-rmu*(u(i,j+1,2)-2*u(i,j,2)+u(i,j-1,2)/pow2(dy)-s(i,j,2)));
+                double v_ele = u(i,j,2);
             }
         }
     return;
@@ -1190,7 +1260,7 @@ void SGS_backward_sweep( Array3& u, Array2& viscx, Array2& viscy, Array2& dt, Ar
 /* !************************************************************** */
 /* !************ADD CODING HERE FOR INTRO CFD STUDENTS************ */
 /* !************************************************************** */
-
+#if 0
     for (int i = imax-2; i > 0; i--)
         {
             for (int j = jmax-2; j > 0; j--)
@@ -1204,6 +1274,51 @@ void SGS_backward_sweep( Array3& u, Array2& viscx, Array2& viscy, Array2& dt, Ar
                 //get half time step forward for v_vel
                 u(i,j,2)=u(i,j,2)-dt(i,j)/rho*((rho*u(i,j,1)*(u(i+1,j,2)-u(i-1,j,2))/(2*dx))+(rho*u(i,j,2)*(u(i,j+1,2)-u(i,j-1,2))/(2*dy))+(u(i,j+1,0)-u(i,j-1,0))/(2*dy)-rmu*(u(i+1,j,2)-2*u(i,j,2)+u(i-1,j,2))/pow2(dx)-rmu*(u(i,j+1,2)-2*u(i,j,2)+u(i,j-1,2)/pow2(dy)-s(i,j,2)));
 
+            }
+        }
+#endif
+
+    Array3 uold(imax, jmax, neq);
+    for (int i = imax-2; i > 0; i--)
+        {
+            for (int j = jmax-2; j > 0; j--)
+            {
+                uold.copyData(u);
+                Find_beta2_local(u, beta2, i, j);
+                //get half time step forward for pressure
+                dudx = (u(i+1,j,1)-u(i-1,j,1))/(2*dx);
+                dudy = (u(i,j+1,1)-u(i,j-1,1))/(2*dy);
+                
+                double u_f_y = u(i,j+1,1);
+                double u_b_y = u(i,j-1,1);
+                double uold_ele = uold(i,j,1); 
+
+                d2udx2 = (u(i+1,j,1)-2*uold(i,j,1)+u(i-1,j,1))/(pow2(dx));
+                d2udy2 = (u(i,j+1,1)-2*uold(i,j,1)+u(i,j-1,1))/(pow2(dy));
+                dpdx = (u(i+1,j,0)-u(i-1,j,0))/(2*dx);
+                dpdy = (u(i,j+1,0)-u(i,j-1,0))/(2*dy);
+                dvdx = (u(i+1,j,2)-u(i-1,j,2))/(2*dx);
+                dvdy = (u(i,j+1,2)-u(i,j-1,2))/(2*dy);
+                d2vdx2 = (u(i+1,j,2)-2*uold(i,j,2)+u(i-1,j,2))/(pow2(dx));
+                d2vdy2 = (u(i,j+1,2)-2*uold(i,j,2)+u(i,j-1,2))/(pow2(dy));
+                
+                u(i,j,0)=uold(i,j,0)-beta2*dt(i,j)*(rho*dudx+rho*dvdy-(viscx(i,j)+viscy(i,j))-s(i,j,0));
+
+                //u(i,j,0)=u(i,j,0)-beta2*dt(i,j)*((rho*(u(i+1,j,1)-u(i-1,j,1))/(2*dx))+(rho*(u(i,j+1,2)-u(i,j-1,2))/(2*dy))-(viscx(i,j)+viscy(i,j))-s(i,j,0)); 
+                double p_ele = u(i,j,0);
+                double viscx_ele = viscx(i,j);
+                double viscy_ele = viscy(i,j);
+                double t_ele = dt(i,j);
+
+                //get half time step forward for u_vel
+                u(i,j,1)=uold(i,j,1)-dt(i,j)/rho*((rho*uold(i,j,1)*dudx)+(rho*uold(i,j,2)*dudy)+dpdx-rmu*d2udx2-rmu*d2udy2-s(i,j,1));
+                //u(i,j,1)=u(i,j,1)-dt(i,j)/rho*((rho*u(i,j,1)*(u(i+1,j,1)-u(i-1,j,1))/(2*dx))+(rho*u(i,j,2)*(u(i,j+1,1)-u(i,j-1,1))/(2*dy))+(u(i+1,j,0)-u(i-1,j,0))/(2*dx)-rmu*(u(i+1,j,1)-2*u(i,j,1)+u(i-1,j,1))/pow2(dx)-rmu*(u(i,j+1,1)-2*u(i,j,1)+u(i,j-1,1)/pow2(dy)-s(i,j,1)));
+                double u_ele = u(i,j,1);
+
+                //get half time step forward for v_vel
+                u(i,j,2)=uold(i,j,2)-dt(i,j)/rho*((rho*uold(i,j,1)*dvdx)+(rho*uold(i,j,2)*dvdy)+dpdy-rmu*d2vdx2-rmu*d2vdy2-s(i,j,2));
+                //u(i,j,2)=u(i,j,2)-dt(i,j)/rho*((rho*u(i,j,1)*(u(i+1,j,2)-u(i-1,j,2))/(2*dx))+(rho*u(i,j,2)*(u(i,j+1,2)-u(i,j-1,2))/(2*dy))+(u(i,j+1,0)-u(i,j-1,0))/(2*dy)-rmu*(u(i+1,j,2)-2*u(i,j,2)+u(i-1,j,2))/pow2(dx)-rmu*(u(i,j+1,2)-2*u(i,j,2)+u(i,j-1,2)/pow2(dy)-s(i,j,2)));
+                double v_ele = u(i,j,2);
             }
         }
     return;
