@@ -40,21 +40,21 @@ using namespace std;
   
 /*--------- User sets inputs here  --------*/
 
-  const int nmax = 500000;             /* Maximum number of iterations */
+  const int nmax = 999999;             /* Maximum number of iterations */
   const int iterout = 5000;             /* Number of time steps between solution output */
   const int imms = 1;                   /* Manufactured solution flag: = 1 for manuf. sol., = 0 otherwise */
-  const int isgs = 1;                   /* Symmetric Gauss-Seidel  flag: = 1 for SGS, = 0 for point Jacobi */
+  const int isgs = 0;                   /* Symmetric Gauss-Seidel  flag: = 1 for SGS, = 0 for point Jacobi */
   const int irstr = 0;                  /* Restart flag: = 1 for restart (file 'restart.in', = 0 for initial run */
   const int ipgorder = 0;               /* Order of pressure gradient: 0 = 2nd, 1 = 3rd (not needed) */
   const int lim = 0;                    /* variable to be used as the limiter sensor (= 0 for pressure) */
   const int residualOut = 10;           /* Number of timesteps between residual output */
 
-  const double cfl  = 0.9;              /* CFL number used to determine time step */
+  const double cfl  = 0.5;              /* CFL number used to determine time step */
   const double Cx = 0.01;               /* Parameter for 4th order artificial viscosity in x */
   const double Cy = 0.01;               /* Parameter for 4th order artificial viscosity in y */
   const double toler = 1.e-8;          /* Tolerance for iterative residual convergence */
-  const double rkappa = 0.1;            /* Time derivative preconditioning constant */
-  const double Re = 10.0;              /* Reynolds number = rho*Uinf*L/rmu */
+  const double rkappa = 0.9;            /* Time derivative preconditioning constant */
+  const double Re = 100.0;              /* Reynolds number = rho*Uinf*L/rmu */
   const double pinf = 0.801333844662;   /* Initial pressure (N/m^2) -> from MMS value at cavity center */
   const double uinf = 1.0;              /* Lid velocity (m/s) */
   const double rho = 1.0;               /* Density (kg/m^3) */
@@ -884,7 +884,7 @@ void Find_beta2_local(Array3& u, double& beta2, int i, int j)
 
 void Find_lambda_x_local(Array3& u, double& lambda_x, double beta2, int i, int j)
 {
-    lambda_x = 0.5 * (u(i, j, 1) + sqrt(pow2(u(i, j, 1) + 4 * beta2)));
+    lambda_x = 0.5 * (abs(u(i, j, 1)) + sqrt(pow2(u(i, j, 1) + 4 * beta2)));
     return;
 }
 
@@ -892,7 +892,7 @@ void Find_lambda_x_local(Array3& u, double& lambda_x, double beta2, int i, int j
 
 void Find_lambda_y_local(Array3& u, double& lambda_y, double beta2, int i, int j)
 {
-    lambda_y = 0.5 * (u(i, j, 2) + sqrt(pow2(u(i, j, 2) + 4 * beta2)));
+    lambda_y = 0.5 * (abs(u(i, j, 2)) + sqrt(pow2(u(i, j, 2) + 4 * beta2)));
     return;
 }
 
@@ -1069,7 +1069,7 @@ void compute_time_step( Array3& u, Array2& dt, double& dtmin )
     {
         for(j = 1; j<jmax-1; j++)
         {
-           beta2 = Find_Beta_2(u,i,j);
+           Find_beta2_local(u,beta2,i,j); 
            lambda_max = compute_lambda_max(u, lambda_x, lambda_y, beta2, i, j);
            dt(i,j) = dx/lambda_max; //since mesh is uniform doesn't matter if we use dx or dy
         }
@@ -1113,7 +1113,7 @@ void compute_time_step( Array3& u, Array2& dt, double& dtmin )
     {
         for(j=1; j<jmax-1; j++)
         {
-            dt(i,j) = dtmin;
+            dt(i,j) = dt(i,j)*cfl;
         }
     }
     
@@ -1145,7 +1145,7 @@ void Compute_Artificial_Viscosity( Array3& u, Array2& viscx, Array2& viscy )
 /* !************ADD CODING HERE FOR INTRO CFD STUDENTS************ */
 /* !************************************************************** */
 
-    double C4 = 1.0/128.0; // define C4, reduce C4 to stablize
+    double C4 = 1.0/16.0; // define C4, reduce C4 to stablize
     Define_viscx_local(u, d4pdx4, viscx, beta2, lambda_x, C4);
     Define_viscy_local(u, d4pdy4, viscy, beta2, lambda_y, C4);
     return;
@@ -1365,7 +1365,8 @@ void point_Jacobi( Array3& u, Array3& uold, Array2& viscx, Array2& viscy, Array2
         {
             dudx = (uold(i+1,j,1)-uold(i-1,j,1))/(2*dx);
             dvdy = (uold(i,j+1,2)-uold(i,j-1,2))/(2*dy);
-            u(i,j,0) = uold(i,j,0)-Find_Beta_2(uold,i,j)*dt(i,j)*(rho*dudx+rho*dvdy-(viscx(i,j)+viscy(i,j))-s(i,j,0));
+            Find_beta2_local(uold,beta2,i,j);
+            u(i,j,0) = uold(i,j,0)-beta2*dt(i,j)*(rho*dudx+rho*dvdy-(viscx(i,j)+viscy(i,j))-s(i,j,0));
         }
     }
 
@@ -1889,4 +1890,3 @@ notconverged:
 
     return 0;
 }
-
