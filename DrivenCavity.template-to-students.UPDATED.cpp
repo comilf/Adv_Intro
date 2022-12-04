@@ -884,7 +884,7 @@ void Find_beta2_local(Array3& u, double& beta2, int i, int j)
 
 void Find_lambda_x_local(Array3& u, double& lambda_x, double beta2, int i, int j)
 {
-    lambda_x = 0.5 * (u(i, j, 1) + sqrt(pow2(u(i, j, 1) + 4 * beta2)));
+    lambda_x = 0.5 * (abs(u(i, j, 1)) + sqrt(pow2(u(i, j, 1) + 4 * beta2)));
     return;
 }
 
@@ -892,7 +892,7 @@ void Find_lambda_x_local(Array3& u, double& lambda_x, double beta2, int i, int j
 
 void Find_lambda_y_local(Array3& u, double& lambda_y, double beta2, int i, int j)
 {
-    lambda_y = 0.5 * (u(i, j, 2) + sqrt(pow2(u(i, j, 2) + 4 * beta2)));
+    lambda_y = 0.5 * (abs(u(i, j, 2)) + sqrt(pow2(u(i, j, 2) + 4 * beta2)));
     return;
 }
 
@@ -1069,7 +1069,7 @@ void compute_time_step( Array3& u, Array2& dt, double& dtmin )
     {
         for(j = 1; j<jmax-1; j++)
         {
-           beta2 = Find_Beta_2(u,i,j);
+           Find_beta2_local(u,beta2,i,j);
            lambda_max = compute_lambda_max(u, lambda_x, lambda_y, beta2, i, j);
            dt(i,j) = dx/lambda_max; //since mesh is uniform doesn't matter if we use dx or dy
         }
@@ -1365,7 +1365,8 @@ void point_Jacobi( Array3& u, Array3& uold, Array2& viscx, Array2& viscy, Array2
         {
             dudx = (uold(i+1,j,1)-uold(i-1,j,1))/(2*dx);
             dvdy = (uold(i,j+1,2)-uold(i,j-1,2))/(2*dy);
-            u(i,j,0) = uold(i,j,0)-Find_Beta_2(uold,i,j)*dt(i,j)*(rho*dudx+rho*dvdy-(viscx(i,j)+viscy(i,j))-s(i,j,0));
+            Find_beta2_local(uold,beta2,i,j);
+            u(i,j,0) = uold(i,j,0)-beta2*dt(i,j)*(rho*dudx+rho*dvdy-(viscx(i,j)+viscy(i,j))-s(i,j,0));
         }
     }
 
@@ -1475,9 +1476,9 @@ void check_iterative_convergence(int n, Array3& u, Array3& uold, Array2& dt, dou
     //computing pressure residual first
     if(imms == 0)
     {
-        for(i=0; i<imax; i++)
+        for(i=1; i<imax-1; i++)
         {
-            for(j=0; j<jmax; j++)
+            for(j=1; j<jmax-1; j++)
             {
                 double dudx = (u(i+1,j,1)-u(i-1,j,1))/(2*dx);
                 double dvdy = (u(i,j+1,2)-u(i,j-1,2))/(2*dy);
@@ -1491,15 +1492,15 @@ void check_iterative_convergence(int n, Array3& u, Array3& uold, Array2& dt, dou
         //so why not just use it to finish the norm calculation
         //note that there are imax*jmax points total here since the norm involves 
         //dividing by the total number of points
-        res[0] = sqrt(res[0]/(imax*jmax));
+        res[0] = sqrt(res[0]/((imax-2)*(jmax-2)));
         //note we are looking at the ratio of the current residual with the initial one
         //and makes sense that the last step stores it in res[0] since res stands for residual
         res[0] = res[0]/resinit[0];
     
         //lets compute the u velocity residual now 
-        for(i=0; i<imax; i++)
+        for(i=1; i<imax-1; i++)
         {
-            for(j=0; j<jmax; j++)
+            for(j=1; j<jmax-1; j++)
             {
                 double dudx = (u(i+1,j,1)-u(i-1,j,1))/(2*dx);
                 double dudy = (u(i,j+1,1)-u(i,j-1,1))/(2*dy);
@@ -1510,13 +1511,13 @@ void check_iterative_convergence(int n, Array3& u, Array3& uold, Array2& dt, dou
                 res[1] = res[1] + residual_variable;
             }
         }
-        res[1] = sqrt(res[1]/(imax*jmax));
+        res[1] = sqrt(res[1]/((imax-2)*(jmax-2)));
         res[1] = res[1]/resinit[1];
 
         //lets compute the v velocity residual now 
-        for(i=0; i<imax; i++)
+        for(i=1; i<imax-1; i++)
         {
-            for(j=0; j<jmax; j++)
+            for(j=1; j<jmax-1; j++)
             {
                 double dvdx = (u(i+1,j,2)-u(i-1,j,2))/(2*dx);
                 double dvdy = (u(i,j+1,2)-u(i,j-1,2))/(2*dy);
@@ -1527,7 +1528,7 @@ void check_iterative_convergence(int n, Array3& u, Array3& uold, Array2& dt, dou
                 res[2] = res[2] + residual_variable;
             }
         }
-        res[2] = sqrt(res[2]/(imax*jmax));
+        res[2] = sqrt(res[2]/((imax-2)*(jmax-2)));
         res[2] = res[2]/resinit[2];
     }
     //the else branch is for the manufactured solution
@@ -1547,8 +1548,9 @@ void check_iterative_convergence(int n, Array3& u, Array3& uold, Array2& dt, dou
                 res[0] = res[0] + residual_variable;
             }
         }
-        res[0] = sqrt(res[0]/(imax*jmax));
-        res[0] = res[0]/resinit[0]; 
+        res[0] = sqrt(res[0]/((imax-2)*(jmax-2)));
+        res[0] = res[0]/resinit[0];
+
         for(i=1; i<imax-1; i++)
         {
             for(j=1; j<jmax-1; j++)
@@ -1562,8 +1564,9 @@ void check_iterative_convergence(int n, Array3& u, Array3& uold, Array2& dt, dou
                 res[1] = res[1] + residual_variable;
             }
         }
-        res[1] = sqrt(res[1]/(imax*jmax));
+        res[1] = sqrt(res[1]/((imax-2)*(jmax-2)));
         res[1] = res[1]/resinit[1];
+
         for(i=1; i<imax-1; i++)
         {
             for(j=1; j<jmax-1; j++)
@@ -1577,11 +1580,154 @@ void check_iterative_convergence(int n, Array3& u, Array3& uold, Array2& dt, dou
                 res[2] = res[2] + residual_variable;
             }
         }
-        res[2] = sqrt(res[2]/(imax*jmax));
+        res[2] = sqrt(res[2]/((imax-2)*(jmax-2)));
         res[2] = res[2]/resinit[2];
     }
 #endif
 
+
+    /* Write iterative residuals every "residualOut" iterations */
+    if( ((n%residualOut)==0)||(n==ninit) )
+    {
+        fprintf(fp1, "%d %e %e %e %e\n",n, rtime, res[0], res[1], res[2] );
+        printf("%d   %e   %e   %e   %e   %e\n",n, rtime, dtmin, res[0], res[1], res[2] );    
+
+        /* Write header for iterative residuals every 20 residual printouts */
+        if( ((n%(residualOut*20))==0)||(n==ninit) )
+        {
+            printf("Iter. Time (s)   dt (s)      Continuity    x-Momentum    y-Momentum\n"); 
+        }    
+    }
+#if 1
+    conv = res[0];
+    if(res[1]>=conv)
+    {
+        conv = res[1];
+    } 
+    if(res[2] > conv)
+    {
+        conv = res[2];
+    }
+#endif     
+}
+/*********************************************************************************
+ *********************Iterative error added********************************************* 
+*/
+void check_iterative_error(int n, Array3& u, Array3& uold, Array2& dt, double res[neq], double resinit[neq], int ninit, double rtime, double dtmin, double& conv)
+{
+  /* 
+  Uses global variable(s): zero
+  Uses global variable(s): imax, jmax, neq, fsmall (not used)
+  Uses: n, u, uold, dt, res, resinit, ninit, rtime, dtmin
+  To modify: conv
+  */
+
+  int i;                       /* i index (x direction) */
+  int j;                       /* j index (y direction) */
+  int k;                       /* k index (# of equations) */
+
+  /* Compute iterative residuals to monitor iterative convergence */
+
+    res[0] = zero;              //Reset to zero (as they are sums)
+    res[1] = zero;
+    res[2] = zero;
+
+/* !************************************************************** */
+/* !************ADD CODING HERE FOR INTRO CFD STUDENTS************ */
+/* !************************************************************** */
+#if 1
+    
+    // the iterative error for each interior node
+    double dp_error_ele;
+    double du_error_ele;
+    double dv_error_ele;
+    // the sum of the square of the iterative error for each interior node
+    double dp_error_sq = 0.0;
+    double du_error_sq = 0.0;
+    double dv_error_sq = 0.0;
+    // the cordinates of node
+    double x;
+    double y;
+    
+    if(imms == 0)
+    {
+        for(i=1; i<imax-1; i++)
+        {
+            for(j=1; j<jmax-1; j++)
+            {
+                
+                double dp_error_ele = u(i,j,0)-uold(i,j,0);
+                dp_error_sq += pow2(dp_error_ele);
+            }
+        }
+        res[0] = sqrt(dp_error_sq/((imax-2)*(jmax-2)));
+        res[0] = res[0]/resinit[0]; 
+        
+        for(i=1; i<imax-1; i++)
+        {
+            for(j=1; j<jmax-1; j++)
+            {
+                double du_error_ele = u(i,j,1)-uold(i,j,1);
+                du_error_sq += pow2(du_error_ele);
+            }
+        }
+        res[1] = sqrt(du_error_sq/((imax-2)*(jmax-2)));
+        res[1] = res[1]/resinit[1]; 
+        
+        for(i=1; i<imax-1; i++)
+        {
+            for(j=1; j<jmax-1; j++)
+            {
+                double dv_error_ele = u(i,j,2)-uold(i,j,2);
+                dv_error_sq += pow2(dv_error_ele);
+            }
+        }
+        res[2] = sqrt(dv_error_sq/((imax-2)*(jmax-2)));
+        res[2] = res[2]/resinit[2]; 
+    }
+    //the else branch is for the manufactured solution
+    else
+    {
+        for(i=1; i<imax-1; i++)
+        {
+            for(j=1; j<jmax-1; j++)
+            {
+                x = double(i)*dx;
+                y = double(j)*dy;
+                double dp_error_ele = u(i,j,0)-umms(x,y,0);
+                dp_error_sq += pow2(dp_error_ele);
+            }
+        }
+        res[0] = sqrt(dp_error_sq/((imax-2)*(jmax-2)));
+        res[0] = res[0]/resinit[0]; 
+        
+        for(i=1; i<imax-1; i++)
+        {
+            for(j=1; j<jmax-1; j++)
+            {
+                x = double(i)*dx;
+                y = double(j)*dy;
+                double du_error_ele = u(i,j,1)-umms(x,y,1);
+                du_error_sq += pow2(du_error_ele);
+            }
+        }
+        res[1] = sqrt(du_error_sq/((imax-2)*(jmax-2)));
+        res[1] = res[1]/resinit[1]; 
+        
+        for(i=1; i<imax-1; i++)
+        {
+            for(j=1; j<jmax-1; j++)
+            {
+                x = double(i)*dx;
+                y = double(j)*dy;
+                double dv_error_ele = u(i,j,2)-umms(x,y,2);
+                dv_error_sq += pow2(dv_error_ele);
+            }
+        }
+        res[2] = sqrt(dv_error_sq/((imax-2)*(jmax-2)));
+        res[2] = res[2]/resinit[2]; 
+    }
+#endif
 
     /* Write iterative residuals every "residualOut" iterations */
     if( ((n%residualOut)==0)||(n==ninit) )
@@ -1646,8 +1792,8 @@ void Discretization_Error_Norms( Array3& u )
         {
             for( int j = 0; j < jmax; j++)
             {
-                x = i*dx;
-                y = j*dy;
+                x = double(i)*dx;
+                y = double(j)*dy;
                 rL1norm[0]+=abs(u(i,j,0)-umms(x,y,0));
                 rL1norm[1]+=abs(u(i,j,1)-umms(x,y,1));
                 rL1norm[2]+=abs(u(i,j,2)-umms(x,y,2));
@@ -1672,8 +1818,8 @@ void Discretization_Error_Norms( Array3& u )
         {
             for( int j = 0; j < jmax; j++)
             {
-                x = i*dx;
-                y = j*dy;
+                x = double(i)*dx;
+                y = double(j)*dy;
                 rL2norm[0]+=pow2(u(i,j,0)-umms(x,y,0));
                 rL2norm[1]+=pow2(u(i,j,1)-umms(x,y,1));
                 rL2norm[2]+=pow2(u(i,j,2)-umms(x,y,2));
@@ -1698,8 +1844,8 @@ void Discretization_Error_Norms( Array3& u )
         {
             for( int j = 0; j < jmax; j++)
             {
-                x = i*dx;
-                y = j*dy;
+                x = double(i)*dx;
+                y = double(j)*dy;
                 rLinfnorm_ele[0] = abs(u(i,j,0)-umms(x,y,0));
                 rLinfnorm_ele[1] = abs(u(i,j,1)-umms(x,y,1));
                 rLinfnorm_ele[2] = abs(u(i,j,2)-umms(x,y,2));
@@ -1849,8 +1995,8 @@ int main()
         rtime += dtmin;
 
         /* Check iterative convergence using L2 norms of iterative residuals */
-        check_iterative_convergence(n, u, uold, dt, res, resinit, ninit, rtime, dtmin, conv);
-
+        //check_iterative_convergence(n, u, uold, dt, res, resinit, ninit, rtime, dtmin, conv);
+        check_iterative_error(n, u, uold, dt, res, resinit, ninit, rtime, dtmin, conv);
         if(conv<toler) 
         {
             fprintf(fp1, "%d %e %e %e %e\n",n, rtime, res[0], res[1], res[2]);
