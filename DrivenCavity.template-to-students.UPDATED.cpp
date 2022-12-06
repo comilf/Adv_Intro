@@ -43,7 +43,7 @@ using namespace std;
   const int nmax = 500000;             /* Maximum number of iterations */
   const int iterout = 5000;             /* Number of time steps between solution output */
   const int imms = 0;                   /* Manufactured solution flag: = 1 for manuf. sol., = 0 otherwise */
-  const int isgs = 1;                   /* Symmetric Gauss-Seidel  flag: = 1 for SGS, = 0 for point Jacobi */
+  const int isgs = 0;                   /* Symmetric Gauss-Seidel  flag: = 1 for SGS, = 0 for point Jacobi */
   const int irstr = 0;                  /* Restart flag: = 1 for restart (file 'restart.in', = 0 for initial run */
   const int ipgorder = 0;               /* Order of pressure gradient: 0 = 2nd, 1 = 3rd (not needed) */
   const int lim = 0;                    /* variable to be used as the limiter sensor (= 0 for pressure) */
@@ -336,7 +336,7 @@ void GS_iteration( boundaryConditionPointer set_boundary_conditions, Array3& u, 
     SGS_forward_sweep(u, viscx, viscy, dt, src);
           
     /* Set Boundary Conditions for u */
-    //set_boundary_conditions(u);
+    set_boundary_conditions(u);
            
     /* Artificial Viscosity */
     Compute_Artificial_Viscosity(u, viscx, viscy);
@@ -345,7 +345,7 @@ void GS_iteration( boundaryConditionPointer set_boundary_conditions, Array3& u, 
     SGS_backward_sweep(u, viscx, viscy, dt, src);
 
     /* Set Boundary Conditions for u */
-    //set_boundary_conditions(u);
+    set_boundary_conditions(u);
 }
 
 /**************************************************************************/
@@ -495,17 +495,16 @@ void bndry( Array3& u )
 /* !************ADD CODING HERE FOR INTRO CFD STUDENTS************ */
 /* !************************************************************** */
 
-//not 100% about the pressures
-   //bottom wall
+
+//bottom wall
    j = 0;
    for(int i=0; i<imax; i++)
     {
         u(i,j,1) = 0;
         u(i,j,2) = 0;
-        u(i,0,0) = 2*u(i,1,0) - u(i,2,0); //was a suggestion from slide 9 on semester project slides
+        u(i,j,0) = 2*u(i,j+1,0) - u(i,j+2,0); //was a suggestion from slide 9 on semester project slides
     }
     //side walls 
-    
     for(j=1; j<jmax-1; j++)
     {
         i=0;
@@ -1182,8 +1181,6 @@ void SGS_forward_sweep( Array3& u, Array2& viscx, Array2& viscy, Array2& dt, Arr
 /* !************************************************************** */
 /* !************ADD CODING HERE FOR INTRO CFD STUDENTS************ */
 /* !************************************************************** */
-if(imms==1)
-{
     Array3 uold(imax, jmax, neq);
     for (int i = 1; i < imax - 1; i++)
         {
@@ -1227,82 +1224,6 @@ if(imms==1)
                 double v_ele = u(i,j,2);
             }
         }
-}
-else
-{
-    Array3 uold(imax, jmax, neq);
-    for (int i = 1; i < imax - 1; i++)
-        {
-            for (int j = 1; j < jmax - 1; j++)
-            {
-                uold.copyData(u);
-                Find_beta2_local(u, beta2, i, j);
-                //get half time step forward for pressure
-                dudx = (u(i+1,j,1)-u(i-1,j,1))/(2*dx);
-                dudy = (u(i,j+1,1)-u(i,j-1,1))/(2*dy);
-                
-                double u_f_y = u(i,j+1,1);
-                double u_b_y = u(i,j-1,1);
-                double uold_ele = uold(i,j,1); 
-
-                d2udx2 = (u(i+1,j,1)-2*uold(i,j,1)+u(i-1,j,1))/(pow2(dx));
-                d2udy2 = (u(i,j+1,1)-2*uold(i,j,1)+u(i,j-1,1))/(pow2(dy));
-                dpdx = (u(i+1,j,0)-u(i-1,j,0))/(2*dx);
-                dpdy = (u(i,j+1,0)-u(i,j-1,0))/(2*dy);
-                dvdx = (u(i+1,j,2)-u(i-1,j,2))/(2*dx);
-                dvdy = (u(i,j+1,2)-u(i,j-1,2))/(2*dy);
-                d2vdx2 = (u(i+1,j,2)-2*uold(i,j,2)+u(i-1,j,2))/(pow2(dx));
-                d2vdy2 = (u(i,j+1,2)-2*uold(i,j,2)+u(i,j-1,2))/(pow2(dy));
-                
-                u(i,j,0)=uold(i,j,0)-beta2*dt(i,j)*(rho*dudx+rho*dvdy-(viscx(i,j)+viscy(i,j)));
-
-                //u(i,j,0)=u(i,j,0)-beta2*dt(i,j)*((rho*(u(i+1,j,1)-u(i-1,j,1))/(2*dx))+(rho*(u(i,j+1,2)-u(i,j-1,2))/(2*dy))-(viscx(i,j)+viscy(i,j))-s(i,j,0)); 
-                double p_ele = u(i,j,0);
-                double viscx_ele = viscx(i,j);
-                double viscy_ele = viscy(i,j);
-                double t_ele = dt(i,j);
-
-                //get half time step forward for u_vel
-                u(i,j,1)=uold(i,j,1)-dt(i,j)/rho*((rho*uold(i,j,1)*dudx)+(rho*uold(i,j,2)*dudy)+dpdx-rmu*d2udx2-rmu*d2udy2);
-                //u(i,j,1)=u(i,j,1)-dt(i,j)/rho*((rho*u(i,j,1)*(u(i+1,j,1)-u(i-1,j,1))/(2*dx))+(rho*u(i,j,2)*(u(i,j+1,1)-u(i,j-1,1))/(2*dy))+(u(i+1,j,0)-u(i-1,j,0))/(2*dx)-rmu*(u(i+1,j,1)-2*u(i,j,1)+u(i-1,j,1))/pow2(dx)-rmu*(u(i,j+1,1)-2*u(i,j,1)+u(i,j-1,1)/pow2(dy)-s(i,j,1)));
-                double u_ele = u(i,j,1);
-
-                //get half time step forward for v_vel
-                u(i,j,2)=uold(i,j,2)-dt(i,j)/rho*((rho*uold(i,j,1)*dvdx)+(rho*uold(i,j,2)*dvdy)+dpdy-rmu*d2vdx2-rmu*d2vdy2);
-                //u(i,j,2)=u(i,j,2)-dt(i,j)/rho*((rho*u(i,j,1)*(u(i+1,j,2)-u(i-1,j,2))/(2*dx))+(rho*u(i,j,2)*(u(i,j+1,2)-u(i,j-1,2))/(2*dy))+(u(i,j+1,0)-u(i,j-1,0))/(2*dy)-rmu*(u(i+1,j,2)-2*u(i,j,2)+u(i-1,j,2))/pow2(dx)-rmu*(u(i,j+1,2)-2*u(i,j,2)+u(i,j-1,2)/pow2(dy)-s(i,j,2)));
-                double v_ele = u(i,j,2);
-            }
-        }
-
-    #if 0
-    // need to extrapolate to boundary values before the iteration
-    // top wall
-    for (int i=0; i<imax; i++){
-        int j = jmax-1;
-        u(i,j,0) = 2*u(i,j-1,0)-u(i,j-2,0);
-        u(i,j,1) = 2*u(i,j-1,1)-u(i,j-2,1);
-        u(i,j,2) = 2*u(i,j-1,2)-u(i,j-2,2);
-    }
-    // bottom wall
-    for (int i=0; i<imax; i++){
-        int j = 0;
-        u(i,j,0) = 2*u(i,j+1,0)-u(i,j+2,0);
-        u(i,j,1) = 2*u(i,j+1,1)-u(i,j+2,1);
-        u(i,j,2) = 2*u(i,j+1,2)-u(i,j+2,2);
-    }
-    // left and right walls
-    for (int j=1; j<jmax-1; j++){
-        int i_1 = 0;
-        u(i_1,j,0) = 2*u(i_1+1,j,0)-u(i_1+2,j,0);
-        u(i_1,j,1) = 2*u(i_1+1,j,1)-u(i_1+2,j,1);
-        u(i_1,j,2) = 2*u(i_1+1,j,2)-u(i_1+2,j,2);
-        int i_2 = imax-1;
-        u(i_2,j,0) = 2*u(i_2-1,j,0)-u(i_2-2,j,0);
-        u(i_2,j,1) = 2*u(i_2-1,j,1)-u(i_2-2,j,1);
-        u(i_2,j,2) = 2*u(i_2-1,j,2)-u(i_2-2,j,2);
-    }
-    #endif
-}
     return;
 }
 
@@ -1355,7 +1276,7 @@ void SGS_backward_sweep( Array3& u, Array2& viscx, Array2& viscy, Array2& dt, Ar
             }
         }
 #endif
-if(imms==1){
+
     Array3 uold(imax, jmax, neq);
     for (int i = imax-2; i > 0; i--)
         {
@@ -1399,80 +1320,6 @@ if(imms==1){
                 double v_ele = u(i,j,2);
             }
         }
-}
-else
-{
-    Array3 uold(imax, jmax, neq);
-    for (int i = imax-2; i > 0; i--)
-        {
-            for (int j = jmax-2; j > 0; j--)
-            {
-                uold.copyData(u);
-                Find_beta2_local(u, beta2, i, j);
-                //get half time step forward for pressure
-                dudx = (u(i+1,j,1)-u(i-1,j,1))/(2*dx);
-                dudy = (u(i,j+1,1)-u(i,j-1,1))/(2*dy);
-                
-                double u_f_y = u(i,j+1,1);
-                double u_b_y = u(i,j-1,1);
-                double uold_ele = uold(i,j,1); 
-
-                d2udx2 = (u(i+1,j,1)-2*uold(i,j,1)+u(i-1,j,1))/(pow2(dx));
-                d2udy2 = (u(i,j+1,1)-2*uold(i,j,1)+u(i,j-1,1))/(pow2(dy));
-                dpdx = (u(i+1,j,0)-u(i-1,j,0))/(2*dx);
-                dpdy = (u(i,j+1,0)-u(i,j-1,0))/(2*dy);
-                dvdx = (u(i+1,j,2)-u(i-1,j,2))/(2*dx);
-                dvdy = (u(i,j+1,2)-u(i,j-1,2))/(2*dy);
-                d2vdx2 = (u(i+1,j,2)-2*uold(i,j,2)+u(i-1,j,2))/(pow2(dx));
-                d2vdy2 = (u(i,j+1,2)-2*uold(i,j,2)+u(i,j-1,2))/(pow2(dy));
-                
-                u(i,j,0)=uold(i,j,0)-beta2*dt(i,j)*(rho*dudx+rho*dvdy-(viscx(i,j)+viscy(i,j)));
-
-                //u(i,j,0)=u(i,j,0)-beta2*dt(i,j)*((rho*(u(i+1,j,1)-u(i-1,j,1))/(2*dx))+(rho*(u(i,j+1,2)-u(i,j-1,2))/(2*dy))-(viscx(i,j)+viscy(i,j))-s(i,j,0)); 
-                double p_ele = u(i,j,0);
-                double viscx_ele = viscx(i,j);
-                double viscy_ele = viscy(i,j);
-                double t_ele = dt(i,j);
-
-                //get half time step forward for u_vel
-                u(i,j,1)=uold(i,j,1)-dt(i,j)/rho*((rho*uold(i,j,1)*dudx)+(rho*uold(i,j,2)*dudy)+dpdx-rmu*d2udx2-rmu*d2udy2);
-                //u(i,j,1)=u(i,j,1)-dt(i,j)/rho*((rho*u(i,j,1)*(u(i+1,j,1)-u(i-1,j,1))/(2*dx))+(rho*u(i,j,2)*(u(i,j+1,1)-u(i,j-1,1))/(2*dy))+(u(i+1,j,0)-u(i-1,j,0))/(2*dx)-rmu*(u(i+1,j,1)-2*u(i,j,1)+u(i-1,j,1))/pow2(dx)-rmu*(u(i,j+1,1)-2*u(i,j,1)+u(i,j-1,1)/pow2(dy)-s(i,j,1)));
-                double u_ele = u(i,j,1);
-
-                //get half time step forward for v_vel
-                u(i,j,2)=uold(i,j,2)-dt(i,j)/rho*((rho*uold(i,j,1)*dvdx)+(rho*uold(i,j,2)*dvdy)+dpdy-rmu*d2vdx2-rmu*d2vdy2);
-                //u(i,j,2)=u(i,j,2)-dt(i,j)/rho*((rho*u(i,j,1)*(u(i+1,j,2)-u(i-1,j,2))/(2*dx))+(rho*u(i,j,2)*(u(i,j+1,2)-u(i,j-1,2))/(2*dy))+(u(i,j+1,0)-u(i,j-1,0))/(2*dy)-rmu*(u(i+1,j,2)-2*u(i,j,2)+u(i-1,j,2))/pow2(dx)-rmu*(u(i,j+1,2)-2*u(i,j,2)+u(i,j-1,2)/pow2(dy)-s(i,j,2)));
-                double v_ele = u(i,j,2);
-            }
-        }
-#if 0
-    // need to extrapolate to boundary values before the iteration
-    for (int i=0; i<imax; i++){
-        int j = jmax-1;
-        u(i,j,0) = 2*u(i,j-1,0)-u(i,j-2,0);
-        u(i,j,1) = 2*u(i,j-1,1)-u(i,j-2,1);
-        u(i,j,2) = 2*u(i,j-1,2)-u(i,j-2,2);
-    }
-    
-    for (int i=0; i<imax; i++){
-        int j = 0;
-        u(i,j,0) = 2*u(i,j+1,0)-u(i,j+2,0);
-        u(i,j,1) = 2*u(i,j+1,1)-u(i,j+2,1);
-        u(i,j,2) = 2*u(i,j+1,2)-u(i,j+2,2);
-    }
-    
-    for (int j=1; j<jmax-1; j++){
-        int i_1 = 0;
-        u(i_1,j,0) = 2*u(i_1+1,j,0)-u(i_1+2,j,0);
-        u(i_1,j,1) = 2*u(i_1+1,j,1)-u(i_1+2,j,1);
-        u(i_1,j,2) = 2*u(i_1+1,j,2)-u(i_1+2,j,2);
-        int i_2 = imax-1;
-        u(i_2,j,0) = 2*u(i_2-1,j,0)-u(i_2-2,j,0);
-        u(i_2,j,1) = 2*u(i_2-1,j,1)-u(i_2-2,j,1);
-        u(i_2,j,2) = 2*u(i_2-1,j,2)-u(i_2-2,j,2);
-    }
-    #endif
-}
     return;
 }
 
@@ -1508,48 +1355,98 @@ void point_Jacobi( Array3& u, Array3& uold, Array2& viscx, Array2& viscy, Array2
 /* !************************************************************** */
 /* !************ADD CODING HERE FOR INTRO CFD STUDENTS************ */
 /* !************************************************************** */
-   // Lets update the pressure first 
-   // note that we dont worry about the pressure at the wall, that is taken care of 
-   // when the boundary condition method is called again in the pj_iteration method
-    for(int i = 1; i < imax-1; i++)
+    if(imms == 0) // actual solution (no mms)
     {
-        for(int j = 1; j < jmax-1; j++)
+        // Lets update the pressure first 
+        // note that we dont worry about the pressure at the wall, that is taken care of 
+        // when the boundary condition method is called again in the pj_iteration method
+        for(int i = 1; i < imax-1; i++)
         {
-            dudx = (uold(i+1,j,1)-uold(i-1,j,1))/(2*dx);
-            dvdy = (uold(i,j+1,2)-uold(i,j-1,2))/(2*dy);
-            Find_beta2_local(uold,beta2,i,j);
-            u(i,j,0) = uold(i,j,0)-beta2*dt(i,j)*(rho*dudx+rho*dvdy-(viscx(i,j)+viscy(i,j))-s(i,j,0));
+            for(int j = 1; j < jmax-1; j++)
+            {
+                dudx = (uold(i+1,j,1)-uold(i-1,j,1))/(2*dx);
+                dvdy = (uold(i,j+1,2)-uold(i,j-1,2))/(2*dy);
+                Find_beta2_local(uold,beta2,i,j);
+                u(i,j,0) = uold(i,j,0)-beta2*dt(i,j)*(rho*dudx+rho*dvdy-(viscx(i,j)+viscy(i,j)));
+            }
+        }
+
+        //next let's update the u velocity
+        //again we dont worry about the wall because the boundary conditions takes care of the wall
+        for(int i = 1; i<imax-1; i++)
+        {
+            for(int j = 1; j < jmax-1; j++)
+            {
+                dudx = (uold(i+1,j,1)-uold(i-1,j,1))/(2*dx);
+                dudy = (uold(i,j+1,1)-uold(i,j-1,1))/(2*dy);
+                dpdx = (uold(i+1,j,0)-uold(i-1,j,0))/(2*dx); // the second uold used to be u. ERROR!!! but fixed now
+                d2udx2 = (uold(i+1,j,1)-2*uold(i,j,1)+uold(i-1,j,1))/pow2(dx);
+                d2udy2 = (uold(i,j+1,1)-2*uold(i,j,1)+uold(i,j-1,1))/(pow2(dy));
+                u(i,j,1) = uold(i,j,1)-(dt(i,j)*rhoinv)*(rho*uold(i,j,1)*dudx+rho*uold(i,j,2)*dudy+dpdx-rmu*d2udx2-rmu*d2udy2);
+            }
+        }
+
+        //finally we update the v velocity
+        for(int i = 1; i < imax-1; i++)
+        {
+            for(int j = 1; j < jmax-1; j++)
+            {
+                dvdx = (uold(i+1,j,2)-uold(i-1,j,2))/(2*dx);
+                dvdy = (uold(i,j+1,2)-uold(i,j-1,2))/(2*dy);
+                dpdy = (uold(i,j+1,0)-uold(i,j-1,0))/(2*dy);
+                d2vdx2 = (uold(i+1,j,2)-2*uold(i,j,2)+uold(i-1,j,2))/pow2(dx);
+                d2vdy2 = (uold(i,j+1,2)-2*uold(i,j,2)+uold(i,j-1,2))/(pow2(dy));
+                u(i,j,2) = uold(i,j,2)-(dt(i,j)*rhoinv)*(rho*uold(i,j,1)*dvdx+rho*uold(i,j,2)*dvdy+dpdy-rmu*d2vdx2-rmu*d2vdy2);
+            }
+        }
+        
+    }
+    else//calculate the mms solution here
+    {
+        // Lets update the pressure first 
+        // note that we dont worry about the pressure at the wall, that is taken care of 
+        // when the boundary condition method is called again in the pj_iteration method
+        for(int i = 1; i < imax-1; i++)
+        {
+            for(int j = 1; j < jmax-1; j++)
+            {
+                dudx = (uold(i+1,j,1)-uold(i-1,j,1))/(2*dx);
+                dvdy = (uold(i,j+1,2)-uold(i,j-1,2))/(2*dy);
+                Find_beta2_local(uold,beta2,i,j);
+                u(i,j,0) = uold(i,j,0)-beta2*dt(i,j)*(rho*dudx+rho*dvdy-(viscx(i,j)+viscy(i,j))-s(i,j,0));
+            }
+        }
+
+        //next let's update the u velocity
+        //again we dont worry about the wall because the boundary conditions takes care of the wall
+        for(int i = 1; i<imax-1; i++)
+        {
+            for(int j = 1; j < jmax-1; j++)
+            {
+                dudx = (uold(i+1,j,1)-uold(i-1,j,1))/(2*dx);
+                dudy = (uold(i,j+1,1)-uold(i,j-1,1))/(2*dy);
+                dpdx = (uold(i+1,j,0)-uold(i-1,j,0))/(2*dx); // the second uold used to be u. ERROR!!! but fixed now
+                d2udx2 = (uold(i+1,j,1)-2*uold(i,j,1)+uold(i-1,j,1))/pow2(dx);
+                d2udy2 = (uold(i,j+1,1)-2*uold(i,j,1)+uold(i,j-1,1))/(pow2(dy));
+                u(i,j,1) = uold(i,j,1)-(dt(i,j)*rhoinv)*(rho*uold(i,j,1)*dudx+rho*uold(i,j,2)*dudy+dpdx-rmu*d2udx2-rmu*d2udy2-s(i,j,1));
+            }
+        }
+
+        //finally we update the v velocity
+        for(int i = 1; i < imax-1; i++)
+        {
+            for(int j = 1; j < jmax-1; j++)
+            {
+                dvdx = (uold(i+1,j,2)-uold(i-1,j,2))/(2*dx);
+                dvdy = (uold(i,j+1,2)-uold(i,j-1,2))/(2*dy);
+                dpdy = (uold(i,j+1,0)-uold(i,j-1,0))/(2*dy);
+                d2vdx2 = (uold(i+1,j,2)-2*uold(i,j,2)+uold(i-1,j,2))/pow2(dx);
+                d2vdy2 = (uold(i,j+1,2)-2*uold(i,j,2)+uold(i,j-1,2))/(pow2(dy));
+                u(i,j,2) = uold(i,j,2)-(dt(i,j)*rhoinv)*(rho*uold(i,j,1)*dvdx+rho*uold(i,j,2)*dvdy+dpdy-rmu*d2vdx2-rmu*d2vdy2-s(i,j,2));
+            }
         }
     }
 
-    //next let's update the u velocity
-    //again we dont worry about the wall because the boundary conditions takes care of the wall
-    for(int i = 1; i<imax-1; i++)
-    {
-        for(int j = 1; j < jmax-1; j++)
-        {
-            dudx = (uold(i+1,j,1)-uold(i-1,j,1))/(2*dx);
-            dudy = (uold(i,j+1,1)-uold(i,j-1,1))/(2*dy);
-            dpdx = (uold(i+1,j,0)-u(i-1,j,0))/(2*dx);
-            d2udx2 = (uold(i+1,j,1)-2*uold(i,j,1)+uold(i-1,j,1))/pow2(dx);
-            d2udy2 = (uold(i,j+1,1)-2*uold(i,j,1)+uold(i,j-1,1))/(pow2(dy));
-            u(i,j,1) = uold(i,j,1)-(dt(i,j)*rhoinv)*(rho*uold(i,j,1)*dudx+rho*uold(i,j,2)*dudy+dpdx-rmu*d2udx2-rmu*d2udy2-s(i,j,1));
-        }
-    }
-
-    //finally we update the v velocity
-    for(int i = 1; i < imax-1; i++)
-    {
-        for(int j = 1; j < jmax-1; j++)
-        {
-            dvdx = (uold(i+1,j,2)-uold(i-1,j,2))/(2*dx);
-            dvdy = (uold(i,j+1,2)-uold(i,j-1,2))/(2*dy);
-            dpdy = (uold(i,j+1,0)-uold(i,j-1,0))/(2*dy);
-            d2vdx2 = (uold(i+1,j,2)-2*uold(i,j,2)+uold(i-1,j,2))/pow2(dx);
-            d2vdy2 = (uold(i,j+1,2)-2*uold(i,j,2)+uold(i,j-1,2))/(pow2(dy));
-            u(i,j,2) = uold(i,j,2)-(dt(i,j)*rhoinv)*(rho*uold(i,j,1)*dvdx+rho*uold(i,j,2)*dvdy+dpdy-rmu*d2vdx2-rmu*d2vdy2-s(i,j,2));
-        }
-    }
 }
 
 /**************************************************************************/
@@ -2013,7 +1910,7 @@ void Discretization_Error_Norms( Array3& u )
         //
         FILE* fp_norm; // flie used to generate norms
         fp_norm=fopen("./norm.out","w");
-        fprintf(fp_norm,"The L2 norms of mesh nodes %d: %f %f %f \n", imax, rL2norm[0], rL2norm[1], rL2norm[2]);
+        fprintf(fp_norm,"The L2 norms of mesh Level k: %f %f %f \n", rL2norm[0], rL2norm[1], rL2norm[2]);
     }
 }
 
