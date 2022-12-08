@@ -49,7 +49,7 @@ using namespace std;
   const int lim = 0;                    /* variable to be used as the limiter sensor (= 0 for pressure) */
   const int residualOut = 10;           /* Number of timesteps between residual output */
 
-  const double cfl  = 0.05;              /* CFL number used to determine time step */
+  const double cfl  = 1.0;              /* CFL number used to determine time step */
   const double Cx = 0.01;               /* Parameter for 4th order artificial viscosity in x */
   const double Cy = 0.01;               /* Parameter for 4th order artificial viscosity in y */
   const double toler = 1.e-8;          /* Tolerance for iterative residual convergence */
@@ -883,7 +883,7 @@ void Find_beta2_local(Array3& u, double& beta2, int i, int j)
 
 void Find_lambda_x_local(Array3& u, double& lambda_x, double beta2, int i, int j)
 {
-    lambda_x = 0.5 * (abs(u(i, j, 1)) + sqrt(pow2(u(i, j, 1) + 4 * beta2)));
+    lambda_x = 0.5 * (abs(u(i, j, 1)) + sqrt(pow2(u(i, j, 1)) + 4 * beta2));
     return;
 }
 
@@ -891,7 +891,7 @@ void Find_lambda_x_local(Array3& u, double& lambda_x, double beta2, int i, int j
 
 void Find_lambda_y_local(Array3& u, double& lambda_y, double beta2, int i, int j)
 {
-    lambda_y = 0.5 * (abs(u(i, j, 2)) + sqrt(pow2(u(i, j, 2) + 4 * beta2)));
+    lambda_y = 0.5 * (abs(u(i, j, 2)) + sqrt(pow2(u(i, j, 2)) + 4 * beta2));
     return;
 }
 
@@ -919,8 +919,12 @@ void Define_viscx_local(Array3& u, double d4pdx4, Array2& viscx, double& beta2, 
     // do the extrapolaion
     for (int j = 1; j < jmax-1; j++)
         {
-        viscx(1, j) = 2 * viscx(2, j) - viscx(3, j);
-        viscx(imax - 2, j) = 2 * viscx(imax - 3, j) - viscx(imax - 4, j);
+        d4pdx4 = -(9*u(1,j,0)-2*u(0,j,0)-16*u(2,j,0)+14*u(3,j,0)-6*u(4,j,0)+u(5,j,0))/pow4(dx);
+        Find_lambda_x_local(u,lambda_x,beta2,1,j);
+        viscx(1,j) = d4pdx4 * (-abs(lambda_x) * C4 * pow3(dx) / beta2);
+        d4pdx4 = -(9*u(imax-2,j,0)+u(imax-6,j,0)-6*u(imax-5,j,0)+14*u(imax-4,j,0)-16*u(imax-3,j,0)-2*u(imax-1,j,0))/pow4(dx);
+        Find_lambda_x_local(u,lambda_x,beta2,imax-2,j);
+        viscx(imax - 2, j) = d4pdx4 * (-abs(lambda_x) * C4 * pow3(dx) / beta2);
         }
 
     #if 0
@@ -964,13 +968,19 @@ void Define_viscy_local(Array3& u, double d4pdy4, Array2& viscy, double& beta2, 
         {
             Find_beta2_local(u, beta2, i, j);
             Find_lambda_y_local(u, lambda_y, beta2, i, j);
-            viscy(i, j) = d4pdy4_set(i, j) * (-abs(lambda_y) * C4 * pow3(dx) / beta2);
+            viscy(i, j) = d4pdy4_set(i, j) * (-abs(lambda_y) * C4 * pow3(dy) / beta2);
         }
     // do the extrapolaion
     for (int i = 1; i < imax - 1; i++)
         {
-        viscy(i, 1) = 2 * viscy(i, 2) - viscy(i, 3);
-        viscy(i, jmax - 2) = 2 * viscy(i, jmax - 3) - viscy(i, jmax - 4);
+            //-(9*u(1,j,0)-2*u(0,j,0)-16*u(2,j,0)+14*u(3,j,0)-6*u(4,j,0)+u(5,j,0))/pow4(dx);
+       d4pdy4 = -(9*u(i,1,0)-2*u(i,0,0)-16*u(i,2,0)+14*u(i,3,0)-6*u(i,4,0)+u(i,5,0))/pow4(dy);
+       Find_lambda_y_local(u,lambda_y,beta2,i,1);
+        viscy(i, 1) = d4pdy4 * (-abs(lambda_y) * C4 * pow3(dy) / beta2);
+        //-(9*u(imax-2,j,0)+u(imax-6,j,0)-6*u(imax-5,j,0)+14*u(imax-4,j,0)-16*u(imax-3,j,0)-2*u(imax-1,j,0))/pow4(dx);
+     d4pdy4=-(9*u(i,jmax-2,0)+u(i,jmax-6,0)-6*u(i,jmax-5,0)+14*u(i,jmax-4,0)-16*u(i,jmax-3,0)-2*u(i,jmax-1,0))/pow4(dy);
+     Find_lambda_y_local(u,lambda_y,beta2,i,jmax-2);
+        viscy(i, jmax - 2) = d4pdy4 * (-abs(lambda_y) * C4 * pow3(dy) / beta2);
         }
 
     #if 0
@@ -1073,6 +1083,7 @@ void compute_time_step( Array3& u, Array2& dt, double& dtmin )
            dt(i,j) = dx/lambda_max; //since mesh is uniform doesn't matter if we use dx or dy
         }
     }
+    
     dtvisc = pow2(dx)/(4*rmu*rhoinv); 
     
     double dtmin_global = 1.0e99;
@@ -1099,15 +1110,17 @@ void compute_time_step( Array3& u, Array2& dt, double& dtmin )
     {
         dtmin = dtconv;
     }
-    dtmin = cfl*dtmin;
+    dtmin=cfl*dtmin;
     #endif
     
+    //dtmin = cfl*dtmin;
     //dtmin = cfl*dtvisc;
     
     //in order to stay consistant with the template and use global time stepping 
     //adding this line to update dt array to hold only dtmin values
 
     //changed to interior nodes only
+    
     for(i=1; i<imax-1; i++)
     {
         for(j=1; j<jmax-1; j++)
@@ -1518,7 +1531,7 @@ void check_iterative_convergence(int n, Array3& u, Array3& uold, Array2& dt, dou
     Array3 source  (imax, jmax, neq);
     double residual_variable;
     //need viscosity for the residual calculation
-    Compute_Artificial_Viscosity(u, viscx, viscy);
+    Compute_Artificial_Viscosity(uold, viscx, viscy); //the uold is a change, used to be u
 
     //calling this function so that we can have access to the source terms
     compute_source_terms(source);
@@ -1542,8 +1555,13 @@ void check_iterative_convergence(int n, Array3& u, Array3& uold, Array2& dt, dou
         //note that there are imax*jmax points total here since the norm involves 
         //dividing by the total number of points
         res[0] = sqrt(res[0]/((imax-2)*(jmax-2)));
+        if(n==1)
+        {
+            resinit[0]=res[0];
+        }
         //note we are looking at the ratio of the current residual with the initial one
         //and makes sense that the last step stores it in res[0] since res stands for residual
+        
         res[0] = res[0]/resinit[0];
     
         //lets compute the u velocity residual now 
@@ -1561,6 +1579,10 @@ void check_iterative_convergence(int n, Array3& u, Array3& uold, Array2& dt, dou
             }
         }
         res[1] = sqrt(res[1]/((imax-2)*(jmax-2)));
+        if(n==1)
+        {
+            resinit[1] = res[1];
+        }
         res[1] = res[1]/resinit[1];
 
         //lets compute the v velocity residual now 
@@ -1578,6 +1600,7 @@ void check_iterative_convergence(int n, Array3& u, Array3& uold, Array2& dt, dou
             }
         }
         res[2] = sqrt(res[2]/((imax-2)*(jmax-2)));
+        
         res[2] = res[2]/resinit[2];
     }
     //the else branch is for the manufactured solution
@@ -1598,6 +1621,10 @@ void check_iterative_convergence(int n, Array3& u, Array3& uold, Array2& dt, dou
             }
         }
         res[0] = sqrt(res[0]/((imax-2)*(jmax-2)));
+        if(n==1)
+        {
+            resinit[0]=res[0];
+        }
         res[0] = res[0]/resinit[0];
 
         for(i=1; i<imax-1; i++)
@@ -1614,6 +1641,10 @@ void check_iterative_convergence(int n, Array3& u, Array3& uold, Array2& dt, dou
             }
         }
         res[1] = sqrt(res[1]/((imax-2)*(jmax-2)));
+        if(n==1)
+        {
+            resinit[1]=res[1];
+        }
         res[1] = res[1]/resinit[1];
 
         for(i=1; i<imax-1; i++)
@@ -1630,6 +1661,7 @@ void check_iterative_convergence(int n, Array3& u, Array3& uold, Array2& dt, dou
             }
         }
         res[2] = sqrt(res[2]/((imax-2)*(jmax-2)));
+        
         res[2] = res[2]/resinit[2];
     }
 #endif
